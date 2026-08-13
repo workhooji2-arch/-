@@ -23,10 +23,12 @@ export async function verifyPassword(password: string, hash: string) {
 export type SessionPayload = {
   sub: string;
   role: "ADMIN" | "TA";
+  /** Seconds since the epoch, as issued by setIssuedAt. */
+  issuedAt?: number;
 };
 
 export async function createSessionToken(payload: SessionPayload) {
-  return new SignJWT(payload)
+  return new SignJWT({ sub: payload.sub, role: payload.role })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${SESSION_MAX_AGE_SECONDS}s`)
@@ -35,11 +37,13 @@ export async function createSessionToken(payload: SessionPayload) {
 
 export async function verifySessionToken(token: string): Promise<SessionPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, getSecretKey());
+    // Pinning the algorithm keeps verification from accepting anything the
+    // token's own header asks for.
+    const { payload } = await jwtVerify(token, getSecretKey(), { algorithms: ["HS256"] });
     if (typeof payload.sub !== "string" || (payload.role !== "ADMIN" && payload.role !== "TA")) {
       return null;
     }
-    return { sub: payload.sub, role: payload.role };
+    return { sub: payload.sub, role: payload.role, issuedAt: payload.iat };
   } catch {
     return null;
   }

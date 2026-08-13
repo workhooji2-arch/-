@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireTA } from "@/lib/session";
 import { kstParts, toMinutes } from "@/lib/payroll";
+import { isValidDate, isValidTime } from "@/lib/validation";
 
 export async function clockInAction() {
   const user = await requireTA();
@@ -60,8 +61,11 @@ export async function addSessionAction(_prev: FormState, formData: FormData): Pr
   const end = String(formData.get("end") || "");
   const note = String(formData.get("note") || "").trim();
 
-  if (!date || !start || !end) {
-    return { error: "날짜와 시각을 모두 입력해주세요." };
+  if (!isValidDate(date) || !isValidTime(start) || !isValidTime(end)) {
+    return { error: "날짜와 시각을 올바르게 입력해주세요." };
+  }
+  if (note.length > 200) {
+    return { error: "비고는 200자 이내로 입력해주세요." };
   }
   const startMin = toMinutes(start);
   const endMin = toMinutes(end);

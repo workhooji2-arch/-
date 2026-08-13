@@ -28,7 +28,7 @@ export default function WageForm({
       <input type="hidden" name="userId" value={userId} />
       <div className="field">
         <label>시급(원)</label>
-        <input type="number" name="wage" min="1" step="1" defaultValue={currentWage ?? ""} required />
+        <input type="number" name="wage" min="1" step="1" max="1000000" defaultValue={currentWage ?? ""} required />
       </div>
       <div className="field grow">
         <label>비고</label>

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/auth";
-import { requireTA } from "@/lib/session";
+import { requireTA, setSessionCookie } from "@/lib/session";
 import { passwordError, usernameError } from "@/lib/validation";
 
 export type AccountState = { error: string } | { done: string } | undefined;
@@ -64,8 +64,16 @@ export async function changePasswordAction(
 
   await prisma.user.update({
     where: { id: user.id },
-    data: { passwordHash: await hashPassword(nextPassword) },
+    data: {
+      passwordHash: await hashPassword(nextPassword),
+      credentialsChangedAt: new Date(),
+    },
   });
 
-  return { done: "비밀번호를 변경했습니다." };
+  // Every session issued before now is void, including this browser's, so it is
+  // handed a fresh one — the person who just changed it stays signed in while
+  // anyone else is signed out.
+  await setSessionCookie({ sub: user.id, role: user.role });
+
+  return { done: "비밀번호를 변경했습니다. 다른 기기에서는 다시 로그인해야 합니다." };
 }

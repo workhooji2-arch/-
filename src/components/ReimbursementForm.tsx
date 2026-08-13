@@ -29,7 +29,7 @@ export default function ReimbursementForm({
         </div>
         <div className="field">
           <label htmlFor="r-amount">금액(원)</label>
-          <input id="r-amount" name="amount" type="number" min="1" step="1" placeholder="15000" required />
+          <input id="r-amount" name="amount" type="number" min="1" step="1" max="100000000" placeholder="15000" required />
         </div>
         <button type="submit" className="btn btn-primary" disabled={pending}>
           {pending ? "추가 중…" : "실비 추가"}

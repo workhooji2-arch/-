@@ -29,7 +29,12 @@ async function syncAdminAccount() {
   if (!upToDate) {
     await prisma.user.update({
       where: { id: existing.id },
-      data: { passwordHash: await hashPassword(password), role: "ADMIN" },
+      data: {
+        passwordHash: await hashPassword(password),
+        role: "ADMIN",
+        // Rotating ADMIN_PASSWORD is meant to cut off the old one everywhere.
+        credentialsChangedAt: new Date(),
+      },
     });
   }
 }

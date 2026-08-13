@@ -11,6 +11,15 @@ export async function proxy(request: NextRequest) {
   const homeFor = (role: "ADMIN" | "TA") => (role === "ADMIN" ? "/admin" : "/dashboard");
 
   if (pathname === "/login" || pathname === "/signup") {
+    // A token can carry a good signature yet still be refused by the app —
+    // it was issued before the password changed. The app sends those here with
+    // this marker; the cookie has to be cleared or this would redirect back to
+    // the dashboard and bounce forever.
+    if (request.nextUrl.searchParams.get("session") === "expired") {
+      const response = NextResponse.next();
+      response.cookies.delete(SESSION_COOKIE);
+      return response;
+    }
     if (session) {
       return NextResponse.redirect(new URL(homeFor(session.role), request.url));
     }

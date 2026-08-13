@@ -22,6 +22,9 @@ model User {
   memo          String?
   currentClockIn DateTime?
   createdAt     DateTime      @default(now())
+  /// Sessions issued before this moment are refused, so changing a password
+  /// (or an admin resetting one) signs out anyone else already logged in.
+  credentialsChangedAt DateTime @default(now())
   sessions      WorkSession[]
   reimbursements Reimbursement[]
 }

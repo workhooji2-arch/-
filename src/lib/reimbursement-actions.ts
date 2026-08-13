@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { MAX_AMOUNT, amountError, isValidDate } from "@/lib/validation";
 
 export type FormState = { error: string } | undefined;
 
@@ -30,11 +31,12 @@ export async function addReimbursementAction(
   const note = String(formData.get("note") || "").trim();
   const amount = Number(formData.get("amount"));
 
-  if (!date) return { error: "날짜를 입력해주세요." };
+  if (!isValidDate(date)) return { error: "날짜를 올바르게 입력해주세요." };
   if (!note) return { error: "내용을 입력해주세요. (예: 프린터 토너 구매)" };
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return { error: "금액을 0보다 큰 숫자로 입력해주세요." };
-  }
+  if (note.length > 200) return { error: "내용은 200자 이내로 입력해주세요." };
+
+  const badAmount = amountError(amount, MAX_AMOUNT, "금액");
+  if (badAmount) return { error: badAmount };
 
   await prisma.reimbursement.create({
     data: { userId: targetId, date, amount: Math.round(amount), note },

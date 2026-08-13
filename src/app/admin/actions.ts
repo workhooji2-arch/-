@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/session";
 import { toMinutes } from "@/lib/payroll";
 import { hashPassword } from "@/lib/auth";
-import { passwordError } from "@/lib/validation";
+import { MAX_WAGE, amountError, isValidDate, isValidTime, passwordError } from "@/lib/validation";
 
 export type FormState = { error: string } | undefined;
 export type ResetState = { error: string } | { done: string } | undefined;
@@ -31,7 +31,12 @@ export async function resetTaPasswordAction(
 
   await prisma.user.update({
     where: { id: target.id },
-    data: { passwordHash: await hashPassword(newPassword) },
+    data: {
+      passwordHash: await hashPassword(newPassword),
+      // Signs the TA out everywhere, which is the point when the reset is
+      // because someone else may have had access.
+      credentialsChangedAt: new Date(),
+    },
   });
 
   revalidatePath("/admin");
@@ -44,8 +49,12 @@ export async function setWageAction(_prev: FormState, formData: FormData): Promi
   const wage = Number(formData.get("wage"));
   const memo = String(formData.get("memo") || "").trim();
 
-  if (!userId || !Number.isFinite(wage) || wage <= 0) {
-    return { error: "올바른 시급을 입력해주세요." };
+  const badWage = amountError(wage, MAX_WAGE, "시급");
+  if (!userId || badWage) {
+    return { error: badWage ?? "올바른 시급을 입력해주세요." };
+  }
+  if (memo.length > 200) {
+    return { error: "비고는 200자 이내로 입력해주세요." };
   }
 
   const target = await prisma.user.findUnique({ where: { id: userId } });
@@ -81,8 +90,11 @@ export async function addSessionForTaAction(_prev: FormState, formData: FormData
   if (!target.wage) {
     return { error: "이 조교는 시급이 설정되지 않았습니다. 먼저 조교 관리에서 시급을 설정하세요." };
   }
-  if (!date || !start || !end) {
-    return { error: "날짜와 시각을 모두 입력해주세요." };
+  if (!isValidDate(date) || !isValidTime(start) || !isValidTime(end)) {
+    return { error: "날짜와 시각을 올바르게 입력해주세요." };
+  }
+  if (note.length > 200) {
+    return { error: "비고는 200자 이내로 입력해주세요." };
   }
   const startMin = toMinutes(start);
   const endMin = toMinutes(end);

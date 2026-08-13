@@ -20,13 +20,28 @@ export async function getSession(): Promise<SessionPayload | null> {
 export async function getCurrentUser() {
   const session = await getSession();
   if (!session) return null;
+
   const user = await prisma.user.findUnique({ where: { id: session.sub } });
+  if (!user) return null;
+
+  // Reject tokens minted before the password last changed, so a password change
+  // or an admin reset signs out sessions elsewhere. Both sides are compared in
+  // whole seconds because that is the resolution a JWT's iat carries.
+  const issuedAt = session.issuedAt;
+  const changedAt = Math.floor(user.credentialsChangedAt.getTime() / 1000);
+  if (typeof issuedAt !== "number" || issuedAt < changedAt) return null;
+
   return user;
 }
 
 export async function requireUser() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) {
+    // A cookie that is still present but no longer accepted has to be cleared,
+    // which only the proxy can do on the way to the login page.
+    const cookieStore = await cookies();
+    redirect(cookieStore.has(SESSION_COOKIE) ? "/login?session=expired" : "/login");
+  }
   return user;
 }
 
