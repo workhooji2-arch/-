@@ -370,6 +370,15 @@ table.ledger tfoot td {
   margin-top: 0.75rem;
 }
 
+.done-msg {
+  color: var(--accent-strong);
+  font-size: 0.85rem;
+  background: var(--accent-soft);
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+  margin-top: 0.75rem;
+}
+
 .tabs {
   display: flex;
   gap: 0.25rem;

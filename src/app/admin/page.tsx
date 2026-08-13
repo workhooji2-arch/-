@@ -20,6 +20,7 @@ import ReimbursementForm from "@/components/ReimbursementForm";
 import ReimbursementTable from "@/components/ReimbursementTable";
 import { logoutAction } from "@/lib/actions";
 import WageForm from "./WageForm";
+import ResetPasswordForm from "./ResetPasswordForm";
 import AdminSessionForm from "./AdminSessionForm";
 import { deleteTaAction, deleteSessionAdminAction } from "./actions";
 
@@ -157,8 +158,9 @@ export default async function AdminPage({
                       <td>{t.memo}</td>
                       <td>
                         <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", alignItems: "flex-start" }}>
-                          <div style={{ display: "flex", gap: "0.4rem" }}>
+                          <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
                             <WageForm userId={t.id} currentWage={t.wage} currentMemo={t.memo} />
+                            <ResetPasswordForm userId={t.id} name={t.name} />
                             <DeleteButton
                               action={deleteTaAction}
                               id={t.id}

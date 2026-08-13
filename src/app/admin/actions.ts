@@ -4,8 +4,39 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/session";
 import { toMinutes } from "@/lib/payroll";
+import { hashPassword } from "@/lib/auth";
+import { passwordError } from "@/lib/validation";
 
 export type FormState = { error: string } | undefined;
+export type ResetState = { error: string } | { done: string } | undefined;
+
+/**
+ * There is no self-service password recovery, so a TA who forgets theirs needs
+ * an admin to set a new one. Only TA accounts can be reset here — the admin's
+ * own credentials come from the environment, not the database.
+ */
+export async function resetTaPasswordAction(
+  _prev: ResetState,
+  formData: FormData,
+): Promise<ResetState> {
+  await requireAdmin();
+  const userId = String(formData.get("userId") || "");
+  const newPassword = String(formData.get("newPassword") || "");
+
+  const invalid = passwordError(newPassword);
+  if (invalid) return { error: invalid };
+
+  const target = await prisma.user.findUnique({ where: { id: userId } });
+  if (!target || target.role !== "TA") return { error: "대상 조교를 찾을 수 없습니다." };
+
+  await prisma.user.update({
+    where: { id: target.id },
+    data: { passwordHash: await hashPassword(newPassword) },
+  });
+
+  revalidatePath("/admin");
+  return { done: `${target.name}님의 비밀번호를 재설정했습니다. 새 비밀번호를 전달해주세요.` };
+}
 
 export async function setWageAction(_prev: FormState, formData: FormData): Promise<FormState> {
   await requireAdmin();

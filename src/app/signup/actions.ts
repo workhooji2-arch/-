@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
 import { setSessionCookie } from "@/lib/session";
 import { SETUP_INCOMPLETE } from "@/lib/messages";
+import { passwordError, usernameError } from "@/lib/validation";
 
 export type FormState = { error: string } | undefined;
 
@@ -18,15 +19,12 @@ export async function signupAction(_prev: FormState, formData: FormData): Promis
   if (!username || !name || !password) {
     return { error: "모든 항목을 입력해주세요." };
   }
-  if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
-    return { error: "아이디는 영문, 숫자, 밑줄(_)로 3~20자로 입력해주세요." };
-  }
-  if (password.length < 8) {
-    return { error: "비밀번호는 8자 이상이어야 합니다." };
-  }
-  if (password !== passwordConfirm) {
-    return { error: "비밀번호가 일치하지 않습니다." };
-  }
+
+  const badUsername = usernameError(username);
+  if (badUsername) return { error: badUsername };
+
+  const badPassword = passwordError(password, passwordConfirm);
+  if (badPassword) return { error: badPassword };
 
   const passwordHash = await hashPassword(password);
 

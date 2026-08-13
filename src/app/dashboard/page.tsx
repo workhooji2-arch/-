@@ -65,6 +65,9 @@ export default async function DashboardPage({
         <div className="who">
           <span className="role-pill">조교</span>
           {user.name} ({user.username})
+          <Link href="/dashboard/account" className="btn btn-ghost btn-sm">
+            계정 설정
+          </Link>
           <LogoutButton action={logoutAction} />
         </div>
       </header>
