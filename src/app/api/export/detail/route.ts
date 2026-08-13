@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
   const target = await prisma.user.findUnique({ where: { id: targetId } });
   if (!target) return new Response("대상을 찾을 수 없습니다.", { status: 404 });
 
-  const [sessions, reimbursements] = await Promise.all([
+  const [sessions, reimbursements, units] = await Promise.all([
     prisma.workSession.findMany({
       where: { userId: targetId, date: { startsWith: month } },
       orderBy: [{ date: "asc" }, { startTime: "asc" }],
@@ -25,10 +25,19 @@ export async function GET(request: NextRequest) {
       where: { userId: targetId, date: { startsWith: month } },
       orderBy: [{ date: "asc" }],
     }),
+    prisma.unitWork.findMany({
+      where: { userId: targetId, date: { startsWith: month } },
+      orderBy: [{ date: "asc" }],
+    }),
   ]);
 
-  const { workPay, tax, netWork, expenses, total } = settle(sessions, reimbursements);
+  const { hourlyPay, unitPay, workPay, tax, netWork, expenses, total } = settle(
+    sessions,
+    reimbursements,
+    units,
+  );
   const totalHours = sessions.reduce((a, s) => a + s.hours, 0);
+  const totalQty = units.reduce((a, u) => a + u.quantity, 0);
 
   const rows: (string | number)[][] = [
     [`${target.name} — ${monthLabel(month)} 급여 내역`],
@@ -44,7 +53,12 @@ export async function GET(request: NextRequest) {
       Math.round(s.hours * s.wage),
       s.note ?? "",
     ]),
-    ["", "", "", totalHours, "", workPay, ""],
+    ["", "", "", totalHours, "", hourlyPay, ""],
+    [],
+    ["개수 작업"],
+    ["날짜", "개수", "단가", "금액", "내용"],
+    ...units.map((u) => [u.date, u.quantity, u.rate, u.quantity * u.rate, u.note ?? ""]),
+    ["", totalQty, "", unitPay, ""],
     [],
     ["실비 정산 (비과세)"],
     ["날짜", "내용", "금액"],
@@ -52,6 +66,8 @@ export async function GET(request: NextRequest) {
     ["", "합계", expenses],
     [],
     ["정산 요약"],
+    ["시간 급여", hourlyPay],
+    ["개수 급여", unitPay],
     ["근무 급여", workPay],
     ["원천징수 (3.3%)", -tax],
     ["급여 실수령", netWork],

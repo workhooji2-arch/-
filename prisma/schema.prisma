@@ -18,7 +18,11 @@ model User {
   passwordHash  String
   role          Role          @default(TA)
   name          String
+  /// 시급(원). 시간제로 일하지 않는 조교는 비어 있다.
   wage          Int?
+  /// 개당 단가(원). 개수제로 일하지 않는 조교는 비어 있다. 두 값을 모두
+  /// 채우면 시간 급여와 개수 급여를 합산해서 받는다.
+  unitRate      Int?
   memo          String?
   currentClockIn DateTime?
   createdAt     DateTime      @default(now())
@@ -27,6 +31,30 @@ model User {
   credentialsChangedAt DateTime @default(now())
   sessions      WorkSession[]
   reimbursements Reimbursement[]
+  unitWorks     UnitWork[]
+}
+
+/// 개수제 작업 한 건. 단가는 기록 시점 값을 함께 저장해, 나중에 단가를
+/// 바꿔도 이미 기록된 금액이 흔들리지 않게 한다.
+model UnitWork {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      String
+  quantity  Int
+  rate      Int
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, date])
+}
+
+/// 앱 전체에 하나만 존재하는 설정 행. 관리자가 받는 월 예산을 담아, 조교
+/// 인건비를 빼고 얼마가 남는지 계산하는 데 쓴다.
+model Setting {
+  id            String   @id @default("singleton")
+  monthlyBudget Int      @default(0)
+  updatedAt     DateTime @updatedAt
 }
 
 /// 조교가 자기 돈으로 먼저 결제한 비품비·심부름 비용. 근로 소득이 아니라

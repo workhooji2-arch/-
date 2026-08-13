@@ -6,10 +6,12 @@ import { setWageAction, type FormState } from "./actions";
 export default function WageForm({
   userId,
   currentWage,
+  currentUnitRate,
   currentMemo,
 }: {
   userId: string;
   currentWage: number | null;
+  currentUnitRate: number | null;
   currentMemo: string | null;
 }) {
   const [editing, setEditing] = useState(false);
@@ -18,7 +20,7 @@ export default function WageForm({
   if (!editing) {
     return (
       <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>
-        {currentWage ? "시급 수정" : "시급 설정"}
+        {currentWage || currentUnitRate ? "단가 수정" : "단가 설정"}
       </button>
     );
   }
@@ -28,7 +30,27 @@ export default function WageForm({
       <input type="hidden" name="userId" value={userId} />
       <div className="field">
         <label>시급(원)</label>
-        <input type="number" name="wage" min="1" step="1" max="1000000" defaultValue={currentWage ?? ""} required />
+        <input
+          type="number"
+          name="wage"
+          min="1"
+          step="1"
+          max="1000000"
+          placeholder="비워두면 시간제 아님"
+          defaultValue={currentWage ?? ""}
+        />
+      </div>
+      <div className="field">
+        <label>개당 단가(원)</label>
+        <input
+          type="number"
+          name="unitRate"
+          min="1"
+          step="1"
+          max="1000000"
+          placeholder="비워두면 개수제 아님"
+          defaultValue={currentUnitRate ?? ""}
+        />
       </div>
       <div className="field grow">
         <label>비고</label>

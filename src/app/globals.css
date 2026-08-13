@@ -141,6 +141,9 @@ a { color: var(--accent-strong); }
   margin-top: 0.25rem;
 }
 .stat-card.money .value { color: var(--amber); }
+.stat-card.left .value { color: var(--accent-strong); }
+.stat-card.over { border-color: var(--red); background: var(--red-soft); }
+.stat-card.over .value { color: var(--red); }
 
 .panel {
   background: var(--surface);

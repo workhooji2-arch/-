@@ -2,6 +2,8 @@ import { hrs, won } from "@/lib/payroll";
 
 export default function PayslipTotals({
   totalHours,
+  hourlyPay,
+  unitPay,
   workPay,
   tax,
   netWork,
@@ -9,18 +11,38 @@ export default function PayslipTotals({
   total,
 }: {
   totalHours: number;
+  hourlyPay: number;
+  unitPay: number;
   workPay: number;
   tax: number;
   netWork: number;
   expenses: number;
   total: number;
 }) {
+  // Only name the two kinds of pay separately when both are actually in play;
+  // for the usual hourly-only TA that split would be noise.
+  const splitPay = hourlyPay > 0 && unitPay > 0;
+
   return (
     <div className="payslip-total-row">
-      <div className="block">
-        <div className="label">총 근무시간</div>
-        <div className="amount">{hrs(totalHours)}시간</div>
-      </div>
+      {hourlyPay > 0 || !unitPay ? (
+        <div className="block">
+          <div className="label">총 근무시간</div>
+          <div className="amount">{hrs(totalHours)}시간</div>
+        </div>
+      ) : null}
+      {splitPay ? (
+        <>
+          <div className="block">
+            <div className="label">시간 급여</div>
+            <div className="amount">{won(hourlyPay)}</div>
+          </div>
+          <div className="block">
+            <div className="label">개수 급여</div>
+            <div className="amount">{won(unitPay)}</div>
+          </div>
+        </>
+      ) : null}
       <div className="block">
         <div className="label">근무 급여</div>
         <div className="amount money">{won(workPay)}</div>

@@ -8,6 +8,7 @@ import {
   settle,
   sumHours,
   sumPay,
+  sumUnitPay,
   todayKST,
   won,
 } from "@/lib/payroll";
@@ -18,10 +19,13 @@ import PrintButton from "@/components/PrintButton";
 import PayslipTotals from "@/components/PayslipTotals";
 import ReimbursementForm from "@/components/ReimbursementForm";
 import ReimbursementTable from "@/components/ReimbursementTable";
+import UnitWorkForm from "@/components/UnitWorkForm";
+import UnitWorkTable from "@/components/UnitWorkTable";
 import { logoutAction } from "@/lib/actions";
 import WageForm from "./WageForm";
 import ResetPasswordForm from "./ResetPasswordForm";
 import AdminSessionForm from "./AdminSessionForm";
+import BudgetForm from "./BudgetPanel";
 import { deleteTaAction, deleteSessionAdminAction } from "./actions";
 
 export default async function AdminPage({
@@ -40,14 +44,18 @@ export default async function AdminPage({
   });
 
   const nowMonth = currentMonthKST();
-  const monthSessionsAll = await prisma.workSession.findMany({ where: { date: { startsWith: nowMonth } } });
+  const [monthSessionsAll, monthUnitsAll] = await Promise.all([
+    prisma.workSession.findMany({ where: { date: { startsWith: nowMonth } } }),
+    prisma.unitWork.findMany({ where: { date: { startsWith: nowMonth } } }),
+  ]);
   const headerHours = sumHours(monthSessionsAll);
-  const headerPay = sumPay(monthSessionsAll);
+  // Piece work is pay too, so the headline figure has to include it.
+  const headerPay = sumPay(monthSessionsAll) + sumUnitPay(monthUnitsAll);
 
   const selectedTaId = sp.ta && tas.some((t) => t.id === sp.ta) ? sp.ta : tas[0]?.id ?? null;
   const selectedTa = selectedTaId ? tas.find((t) => t.id === selectedTaId) ?? null : null;
 
-  const [viewSessions, viewExpenses] = selectedTaId
+  const [viewSessions, viewExpenses, viewUnits] = selectedTaId
     ? await Promise.all([
         prisma.workSession.findMany({
           where: { userId: selectedTaId, date: { startsWith: month } },
@@ -57,16 +65,22 @@ export default async function AdminPage({
           where: { userId: selectedTaId, date: { startsWith: month } },
           orderBy: [{ date: "asc" }],
         }),
+        prisma.unitWork.findMany({
+          where: { userId: selectedTaId, date: { startsWith: month } },
+          orderBy: [{ date: "asc" }],
+        }),
       ])
-    : [[], []];
+    : [[], [], []];
 
   const totalHours = sumHours(viewSessions);
-  const totals = settle(viewSessions, viewExpenses);
+  const totals = settle(viewSessions, viewExpenses, viewUnits);
 
   type SummaryRow = {
     id: string;
     name: string;
     hours: number;
+    hourlyPay: number;
+    unitPay: number;
     workPay: number;
     tax: number;
     netWork: number;
@@ -74,18 +88,28 @@ export default async function AdminPage({
     total: number;
   };
   let summaryRows: SummaryRow[] = [];
+  let budget = 0;
   if (tab === "payslip") {
-    const [allSessions, allExpenses] = await Promise.all([
+    const [allSessions, allExpenses, allUnits, setting] = await Promise.all([
       prisma.workSession.findMany({ where: { date: { startsWith: month } } }),
       prisma.reimbursement.findMany({ where: { date: { startsWith: month } } }),
+      prisma.unitWork.findMany({ where: { date: { startsWith: month } } }),
+      prisma.setting.findUnique({ where: { id: "singleton" } }),
     ]);
+    budget = setting?.monthlyBudget ?? 0;
     summaryRows = tas.map((t) => {
       const s = allSessions.filter((sess) => sess.userId === t.id);
       const e = allExpenses.filter((exp) => exp.userId === t.id);
-      return { id: t.id, name: t.name, hours: sumHours(s), ...settle(s, e) };
+      const u = allUnits.filter((unit) => unit.userId === t.id);
+      return { id: t.id, name: t.name, hours: sumHours(s), ...settle(s, e, u) };
     });
   }
   const grand = (pick: (r: SummaryRow) => number) => summaryRows.reduce((a, r) => a + pick(r), 0);
+
+  // What actually leaves the budget is the pay before withholding plus the
+  // reimbursements — the 3.3% is money passed on to the tax office, not saved.
+  const payrollCost = grand((r) => r.workPay) + grand((r) => r.expenses);
+  const remaining = budget - payrollCost;
 
   const tabHref = (t: string) => `/admin?tab=${t}${selectedTaId ? `&ta=${selectedTaId}` : ""}&month=${month}`;
 
@@ -134,8 +158,8 @@ export default async function AdminPage({
         <div className="panel">
           <h2>조교 관리</h2>
           <div className="hint">
-            조교가 직접 가입하면 이 목록에 나타납니다. 시급을 설정해야 해당 조교가 근무를 기록할 수 있습니다. 시급을
-            수정해도 이미 기록된 근무 건의 금액은 바뀌지 않습니다.
+            조교가 직접 가입하면 이 목록에 나타납니다. 시급 또는 개당 단가를 설정해야 해당 조교가 기록을 남길 수
+            있고, 둘 다 넣으면 두 급여를 합산해서 받습니다. 단가를 수정해도 이미 기록된 건의 금액은 바뀌지 않습니다.
           </div>
           {tas.length ? (
             <div className="table-wrap">
@@ -145,6 +169,7 @@ export default async function AdminPage({
                     <th>이름</th>
                     <th>아이디</th>
                     <th className="num">시급</th>
+                    <th className="num">개당 단가</th>
                     <th>비고</th>
                     <th>관리</th>
                   </tr>
@@ -154,12 +179,18 @@ export default async function AdminPage({
                     <tr key={t.id}>
                       <td>{t.name}</td>
                       <td>{t.username}</td>
-                      <td className="num">{t.wage ? won(t.wage) + " / 시간" : "미설정"}</td>
+                      <td className="num">{t.wage ? won(t.wage) + " / 시간" : "—"}</td>
+                      <td className="num">{t.unitRate ? won(t.unitRate) + " / 개" : "—"}</td>
                       <td>{t.memo}</td>
                       <td>
                         <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", alignItems: "flex-start" }}>
                           <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
-                            <WageForm userId={t.id} currentWage={t.wage} currentMemo={t.memo} />
+                            <WageForm
+                              userId={t.id}
+                              currentWage={t.wage}
+                              currentUnitRate={t.unitRate}
+                              currentMemo={t.memo}
+                            />
                             <ResetPasswordForm userId={t.id} name={t.name} />
                             <DeleteButton
                               action={deleteTaAction}
@@ -200,9 +231,12 @@ export default async function AdminPage({
                 </div>
                 {selectedTa && selectedTa.wage ? (
                   <AdminSessionForm userId={selectedTa.id} today={todayKST()} />
-                ) : (
-                  <div className="empty-state">이 조교는 시급이 설정되지 않아 근무를 기록할 수 없습니다.</div>
-                )}
+                ) : null}
+                {selectedTa && !selectedTa.wage && !selectedTa.unitRate ? (
+                  <div className="empty-state">
+                    이 조교는 시급과 개당 단가가 모두 설정되지 않아 기록을 남길 수 없습니다.
+                  </div>
+                ) : null}
               </>
             ) : (
               <div className="empty-state">아직 가입한 조교가 없습니다.</div>
@@ -258,6 +292,18 @@ export default async function AdminPage({
               )}
             </div>
           )}
+          {selectedTa && selectedTa.unitRate ? (
+            <div className="panel">
+              <h3>{selectedTa.name}님의 개수 작업</h3>
+              <UnitWorkForm today={todayKST()} rate={selectedTa.unitRate} userId={selectedTa.id} />
+              <div style={{ marginTop: "1.25rem" }}>
+                <UnitWorkTable
+                  rows={viewUnits}
+                  emptyLabel={`${monthLabel(month)}에 등록된 개수 작업이 없습니다.`}
+                />
+              </div>
+            </div>
+          ) : null}
           {selectedTa && (
             <div className="panel">
               <h3>{selectedTa.name}님의 실비 정산 (비품비 · 심부름 결제)</h3>
@@ -340,6 +386,12 @@ export default async function AdminPage({
                 ) : (
                   <div className="empty-state">{monthLabel(month)}에 기록된 근무가 없습니다.</div>
                 )}
+                {viewUnits.length ? (
+                  <div style={{ marginTop: "1.5rem" }}>
+                    <h3>개수 작업</h3>
+                    <UnitWorkTable rows={viewUnits} emptyLabel="" showDelete={false} />
+                  </div>
+                ) : null}
                 {viewExpenses.length ? (
                   <div style={{ marginTop: "1.5rem" }}>
                     <h3>실비 정산 (비과세)</h3>
@@ -350,6 +402,38 @@ export default async function AdminPage({
               </div>
             ) : (
               <div className="empty-state">아직 가입한 조교가 없습니다.</div>
+            )}
+          </div>
+          <div className="panel">
+            <div className="toolbar">
+              <h3 style={{ margin: 0 }}>{monthLabel(month)} 예산 잔액</h3>
+              <BudgetForm currentBudget={budget} />
+            </div>
+            {budget > 0 ? (
+              <>
+                <div className="summary-grid">
+                  <div className="stat-card">
+                    <div className="label">내 월급 (예산)</div>
+                    <div className="value">{won(budget)}</div>
+                  </div>
+                  <div className="stat-card money">
+                    <div className="label">조교 인건비 + 실비</div>
+                    <div className="value">−{won(payrollCost)}</div>
+                  </div>
+                  <div className={`stat-card${remaining < 0 ? " over" : " left"}`}>
+                    <div className="label">{remaining < 0 ? "예산 초과" : "남는 금액"}</div>
+                    <div className="value">{won(remaining)}</div>
+                  </div>
+                </div>
+                <div className="hint" style={{ margin: "0.75rem 0 0" }}>
+                  인건비는 원천징수를 떼기 전 금액입니다. 3.3%는 조교가 아니라 세무서로 갈 뿐, 예산에서는 똑같이
+                  나가기 때문입니다.
+                </div>
+              </>
+            ) : (
+              <div className="empty-state">
+                내 월급(월 예산)을 설정하면 조교 인건비를 빼고 얼마가 남는지 보여드립니다.
+              </div>
             )}
           </div>
           <div className="panel">
@@ -366,6 +450,7 @@ export default async function AdminPage({
                     <tr>
                       <th>이름</th>
                       <th className="num">근무시간</th>
+                      <th className="num">개수 급여</th>
                       <th className="num">근무 급여</th>
                       <th className="num">원천징수 (3.3%)</th>
                       <th className="num">급여 실수령</th>
@@ -378,6 +463,7 @@ export default async function AdminPage({
                       <tr key={r.id}>
                         <td>{r.name}</td>
                         <td className="num">{hrs(r.hours)}</td>
+                        <td className="num">{r.unitPay ? won(r.unitPay) : "—"}</td>
                         <td className="num">{won(r.workPay)}</td>
                         <td className="num">−{won(r.tax)}</td>
                         <td className="num">{won(r.netWork)}</td>
@@ -390,6 +476,7 @@ export default async function AdminPage({
                     <tr>
                       <td>전체 합계</td>
                       <td className="num">{hrs(grand((r) => r.hours))}</td>
+                      <td className="num">{won(grand((r) => r.unitPay))}</td>
                       <td className="num">{won(grand((r) => r.workPay))}</td>
                       <td className="num">−{won(grand((r) => r.tax))}</td>
                       <td className="num">{won(grand((r) => r.netWork))}</td>

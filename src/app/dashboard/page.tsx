@@ -8,6 +8,7 @@ import {
   settle,
   sumHours,
   sumPay,
+  sumUnitPay,
   todayKST,
   won,
 } from "@/lib/payroll";
@@ -18,6 +19,8 @@ import PrintButton from "@/components/PrintButton";
 import PayslipTotals from "@/components/PayslipTotals";
 import ReimbursementForm from "@/components/ReimbursementForm";
 import ReimbursementTable from "@/components/ReimbursementTable";
+import UnitWorkForm from "@/components/UnitWorkForm";
+import UnitWorkTable from "@/components/UnitWorkTable";
 import TimerBox from "./TimerBox";
 import ManualEntryForm from "./ManualEntryForm";
 import { clockInAction, clockOutAction, deleteSessionAction } from "./actions";
@@ -34,7 +37,7 @@ export default async function DashboardPage({
   const nowMonth = currentMonthKST();
   const month = sp.month || nowMonth;
 
-  const [thisMonthSessions, viewSessions, viewExpenses] = await Promise.all([
+  const [thisMonthSessions, viewSessions, viewExpenses, viewUnits] = await Promise.all([
     month === nowMonth
       ? Promise.resolve(null)
       : prisma.workSession.findMany({ where: { userId: user.id, date: { startsWith: nowMonth } } }),
@@ -46,14 +49,24 @@ export default async function DashboardPage({
       where: { userId: user.id, date: { startsWith: month } },
       orderBy: [{ date: "asc" }],
     }),
+    prisma.unitWork.findMany({
+      where: { userId: user.id, date: { startsWith: month } },
+      orderBy: [{ date: "asc" }],
+    }),
   ]);
 
   const headerSessions = thisMonthSessions ?? viewSessions;
   const headerHours = sumHours(headerSessions);
-  const headerPay = sumPay(headerSessions);
+  // Piece work counts toward the headline figure as well, so a TA paid only by
+  // the piece does not see a total of zero.
+  const headerUnits =
+    month === nowMonth
+      ? viewUnits
+      : await prisma.unitWork.findMany({ where: { userId: user.id, date: { startsWith: nowMonth } } });
+  const headerPay = sumPay(headerSessions) + sumUnitPay(headerUnits);
 
   const totalHours = sumHours(viewSessions);
-  const totals = settle(viewSessions, viewExpenses);
+  const totals = settle(viewSessions, viewExpenses, viewUnits);
 
   return (
     <div className="shell">
@@ -82,8 +95,14 @@ export default async function DashboardPage({
           <div className="value">{won(headerPay)}</div>
         </div>
         <div className="stat-card">
-          <div className="label">시급</div>
-          <div className="value">{user.wage ? won(user.wage) : "미설정"}</div>
+          <div className="label">{user.unitRate && !user.wage ? "개당 단가" : "시급"}</div>
+          <div className="value">
+            {user.unitRate && !user.wage
+              ? won(user.unitRate)
+              : user.wage
+                ? won(user.wage)
+                : "미설정"}
+          </div>
         </div>
       </div>
 
@@ -96,29 +115,49 @@ export default async function DashboardPage({
         </Link>
       </nav>
 
-      {!user.wage ? (
+      {!user.wage && !user.unitRate ? (
         <div className="panel">
           <div className="empty-state">
-            아직 시급이 설정되지 않았습니다. 관리자가 시급을 설정하면 근무 기록을 시작할 수 있습니다.
+            아직 시급이나 개당 단가가 설정되지 않았습니다. 관리자가 설정하면 기록을 시작할 수 있습니다.
           </div>
         </div>
       ) : tab === "log" ? (
         <>
-          <div className="panel">
-            <h2>근무 기록</h2>
-            <TimerBox
-              clockedInAt={user.currentClockIn ? user.currentClockIn.toISOString() : null}
-              clockInAction={clockInAction}
-              clockOutAction={clockOutAction}
-            />
-            <ManualEntryForm today={todayKST()} />
-          </div>
+          {user.wage ? (
+            <div className="panel">
+              <h2>근무 기록</h2>
+              <TimerBox
+                clockedInAt={user.currentClockIn ? user.currentClockIn.toISOString() : null}
+                clockInAction={clockInAction}
+                clockOutAction={clockOutAction}
+              />
+              <ManualEntryForm today={todayKST()} />
+            </div>
+          ) : null}
+          {user.unitRate ? (
+            <div className="panel">
+              <h2>개수 작업</h2>
+              <UnitWorkForm today={todayKST()} rate={user.unitRate} />
+              <div style={{ marginTop: "1.25rem" }}>
+                <UnitWorkTable
+                  rows={viewUnits}
+                  emptyLabel={`${monthLabel(month)}에 등록된 개수 작업이 없습니다.`}
+                />
+              </div>
+            </div>
+          ) : null}
           <div className="panel">
             <div className="toolbar">
-              <h3 style={{ margin: 0 }}>{monthLabel(month)} 근무 내역</h3>
+              <h3 style={{ margin: 0 }}>
+                {monthLabel(month)} {user.wage ? "근무 내역" : "조회 월"}
+              </h3>
               <MonthFilter month={month} hidden={{ tab: "log" }} />
             </div>
-            {viewSessions.length ? (
+            {!user.wage ? (
+              <div className="empty-state">
+                시간제 근무는 하지 않는 조교입니다. 위 개수 작업 기록을 사용하세요.
+              </div>
+            ) : viewSessions.length ? (
               <div className="table-wrap">
                 <table className="ledger">
                   <thead>
@@ -189,7 +228,9 @@ export default async function DashboardPage({
             <div className="payslip-head">
               <div className="name">{user.name}</div>
               <div className="period">
-                {monthLabel(month)} 급여 명세서 · 시급 {won(user.wage)}
+                {monthLabel(month)} 급여 명세서
+                {user.wage ? ` · 시급 ${won(user.wage)}` : ""}
+                {user.unitRate ? ` · 개당 ${won(user.unitRate)}` : ""}
               </div>
             </div>
             {viewSessions.length ? (
@@ -219,9 +260,15 @@ export default async function DashboardPage({
                   </tbody>
                 </table>
               </div>
-            ) : (
+            ) : user.wage ? (
               <div className="empty-state">{monthLabel(month)}에 기록된 근무가 없습니다.</div>
-            )}
+            ) : null}
+            {viewUnits.length ? (
+              <div style={{ marginTop: "1.5rem" }}>
+                <h3>개수 작업</h3>
+                <UnitWorkTable rows={viewUnits} emptyLabel="" showDelete={false} />
+              </div>
+            ) : null}
             {viewExpenses.length ? (
               <div style={{ marginTop: "1.5rem" }}>
                 <h3>실비 정산 (비과세)</h3>

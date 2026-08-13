@@ -43,18 +43,40 @@ export async function resetTaPasswordAction(
   return { done: `${target.name}님의 비밀번호를 재설정했습니다. 새 비밀번호를 전달해주세요.` };
 }
 
+/**
+ * A TA is paid by the hour, by the piece, or both, and which one is simply
+ * whether that rate is filled in. Leaving a field blank clears that kind of
+ * pay, so at least one has to be given.
+ */
 export async function setWageAction(_prev: FormState, formData: FormData): Promise<FormState> {
   await requireAdmin();
   const userId = String(formData.get("userId") || "");
-  const wage = Number(formData.get("wage"));
+  const wageInput = String(formData.get("wage") || "").trim();
+  const unitRateInput = String(formData.get("unitRate") || "").trim();
   const memo = String(formData.get("memo") || "").trim();
 
-  const badWage = amountError(wage, MAX_WAGE, "시급");
-  if (!userId || badWage) {
-    return { error: badWage ?? "올바른 시급을 입력해주세요." };
+  if (!userId) return { error: "대상 조교를 찾을 수 없습니다." };
+  if (!wageInput && !unitRateInput) {
+    return { error: "시급과 개당 단가 중 최소 하나는 입력해주세요." };
   }
   if (memo.length > 200) {
     return { error: "비고는 200자 이내로 입력해주세요." };
+  }
+
+  let wage: number | null = null;
+  if (wageInput) {
+    const value = Number(wageInput);
+    const bad = amountError(value, MAX_WAGE, "시급");
+    if (bad) return { error: bad };
+    wage = Math.round(value);
+  }
+
+  let unitRate: number | null = null;
+  if (unitRateInput) {
+    const value = Number(unitRateInput);
+    const bad = amountError(value, MAX_WAGE, "개당 단가");
+    if (bad) return { error: bad };
+    unitRate = Math.round(value);
   }
 
   const target = await prisma.user.findUnique({ where: { id: userId } });
@@ -62,9 +84,31 @@ export async function setWageAction(_prev: FormState, formData: FormData): Promi
     return { error: "대상 조교를 찾을 수 없습니다." };
   }
 
-  await prisma.user.update({ where: { id: userId }, data: { wage: Math.round(wage), memo } });
+  await prisma.user.update({ where: { id: userId }, data: { wage, unitRate, memo } });
   revalidatePath("/admin");
   return undefined;
+}
+
+export async function setBudgetAction(_prev: ResetState, formData: FormData): Promise<ResetState> {
+  await requireAdmin();
+  const value = Number(String(formData.get("monthlyBudget") || "").trim());
+
+  if (!Number.isFinite(value) || value < 0) {
+    return { error: "월 예산을 0 이상의 숫자로 입력해주세요." };
+  }
+  if (value > 10_000_000_000) {
+    return { error: "금액이 너무 큽니다." };
+  }
+
+  const monthlyBudget = Math.round(value);
+  await prisma.setting.upsert({
+    where: { id: "singleton" },
+    update: { monthlyBudget },
+    create: { id: "singleton", monthlyBudget },
+  });
+
+  revalidatePath("/admin");
+  return { done: "월 예산을 저장했습니다." };
 }
 
 export async function deleteTaAction(formData: FormData) {
