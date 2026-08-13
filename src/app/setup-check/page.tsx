@@ -1,10 +1,25 @@
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { getCurrentUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 type Check = { label: string; ok: boolean; detail: string };
 
 export default async function SetupCheckPage() {
+  // This page exists for the case where signing in does not work, so requiring
+  // a login unconditionally would lock it away exactly when it is needed. When
+  // JWT_SECRET is missing no session can be issued at all — nobody can log in,
+  // so the page stays reachable. Once the app can issue sessions it is admin-only.
+  const sessionsWork = Boolean(process.env.JWT_SECRET);
+  let viewerIsAdmin = false;
+
+  if (sessionsWork) {
+    const viewer = await getCurrentUser().catch(() => null);
+    viewerIsAdmin = viewer?.role === "ADMIN";
+    if (!viewerIsAdmin) redirect("/login");
+  }
+
   const checks: Check[] = [];
 
   const adminUsername = process.env.ADMIN_USERNAME;
@@ -13,9 +28,11 @@ export default async function SetupCheckPage() {
   checks.push({
     label: "ADMIN_USERNAME 환경 변수",
     ok: Boolean(adminUsername),
-    detail: adminUsername
-      ? `설정됨 — 아이디는 "${adminUsername}" 입니다`
-      : "설정되지 않았습니다. 이것이 로그인이 안 되는 원인입니다.",
+    detail: !adminUsername
+      ? "설정되지 않았습니다. 이것이 로그인이 안 되는 원인입니다."
+      : viewerIsAdmin
+        ? `설정됨 — 아이디는 "${adminUsername}" 입니다`
+        : "설정됨",
   });
 
   const passwordPadded = adminPassword ? adminPassword !== adminPassword.trim() : false;
@@ -51,7 +68,9 @@ export default async function SetupCheckPage() {
       // so that only counts as a problem when the credentials are missing too.
       ok: adminExists || credentialsReady,
       detail: admin
-        ? `생성됨 — 아이디 "${admin.username}"`
+        ? viewerIsAdmin
+          ? `생성됨 — 아이디 "${admin.username}"`
+          : "생성됨"
         : credentialsReady
           ? "아직 만들어지지 않았습니다. 로그인 페이지에서 위 아이디로 한 번 로그인하면 자동으로 만들어집니다."
           : "만들 수 없습니다. 위의 환경 변수를 먼저 설정해주세요.",
