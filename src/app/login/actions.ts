@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { verifyPassword } from "@/lib/auth";
 import { setSessionCookie } from "@/lib/session";
+import { ensureAdminAccount } from "@/lib/ensure-admin";
 
 export type FormState = { error: string } | undefined;
 
@@ -14,6 +15,8 @@ export async function loginAction(_prev: FormState, formData: FormData): Promise
   if (!username || !password) {
     return { error: "아이디와 비밀번호를 입력해주세요." };
   }
+
+  await ensureAdminAccount();
 
   const user = await prisma.user.findUnique({ where: { username } });
   if (!user) {
