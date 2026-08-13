@@ -37,25 +37,14 @@ Next.js (App Router) · PostgreSQL · Prisma · 쿠키 기반 JWT 세션 인증
 
 ### 3. 데이터베이스 테이블 생성 + 관리자 계정 생성
 
-로컬 컴퓨터에서 한 번만 실행하면 됩니다. 이 저장소를 클론한 뒤:
+따로 하실 일이 없습니다. 배포할 때마다 아래 두 가지가 자동으로 실행됩니다.
 
-```bash
-npm install
+- `prisma migrate deploy` — 아직 적용되지 않은 테이블 변경만 적용합니다. 이미 만들어진 테이블과 기존 데이터는 그대로 유지됩니다.
+- `prisma db seed` — `ADMIN_USERNAME` 계정이 없으면 만들고, 이미 있으면 `ADMIN_PASSWORD` 값으로 비밀번호만 갱신합니다.
 
-# .env 파일을 만들고 Vercel에 등록한 것과 같은 값을 넣습니다
-echo 'DATABASE_URL="postgresql://..."' >> .env
-echo 'JWT_SECRET="..."' >> .env
-echo 'ADMIN_USERNAME="..."' >> .env
-echo 'ADMIN_PASSWORD="..."' >> .env
+즉 관리자 비밀번호를 바꾸고 싶으면 Vercel에서 `ADMIN_PASSWORD` 값을 수정하고 재배포하면 됩니다.
 
-# 테이블 생성
-npm run db:push
-
-# 관리자 계정 생성 (같은 아이디로 다시 실행하면 비밀번호만 갱신됩니다)
-npm run db:seed
-```
-
-완료되면 배포된 주소(예: `https://your-app.vercel.app`)에서 관리자 아이디/비밀번호로 로그인할 수 있습니다.
+배포가 끝나면 배포된 주소(예: `https://your-app.vercel.app`)에서 관리자 아이디/비밀번호로 바로 로그인할 수 있습니다.
 
 ### 4. 조교에게 공유하기
 
@@ -63,12 +52,12 @@ npm run db:seed
 
 ## 로컬에서 개발하기
 
-Neon에 별도의 개발용 브랜치/프로젝트를 하나 더 만들어 `DATABASE_URL`로 연결하는 것을 추천합니다.
+운영 데이터가 섞이지 않도록, Neon에 개발용 브랜치/프로젝트를 하나 더 만들어 `DATABASE_URL`로 연결하는 것을 추천합니다.
 
 ```bash
 npm install
-npm run db:push
-npm run db:seed
+npm run db:deploy   # 테이블 생성
+npm run db:seed     # 관리자 계정 생성
 npm run dev
 ```
 
