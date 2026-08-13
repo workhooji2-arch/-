@@ -2,10 +2,10 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/session";
 import {
-  TAX_RATE,
   currentMonthKST,
   hrs,
   monthLabel,
+  settle,
   sumHours,
   sumPay,
   todayKST,
@@ -15,6 +15,9 @@ import LogoutButton from "@/components/LogoutButton";
 import MonthFilter from "@/components/MonthFilter";
 import DeleteButton from "@/components/DeleteButton";
 import PrintButton from "@/components/PrintButton";
+import PayslipTotals from "@/components/PayslipTotals";
+import ReimbursementForm from "@/components/ReimbursementForm";
+import ReimbursementTable from "@/components/ReimbursementTable";
 import { logoutAction } from "@/lib/actions";
 import WageForm from "./WageForm";
 import AdminSessionForm from "./AdminSessionForm";
@@ -43,32 +46,45 @@ export default async function AdminPage({
   const selectedTaId = sp.ta && tas.some((t) => t.id === sp.ta) ? sp.ta : tas[0]?.id ?? null;
   const selectedTa = selectedTaId ? tas.find((t) => t.id === selectedTaId) ?? null : null;
 
-  const viewSessions = selectedTaId
-    ? await prisma.workSession.findMany({
-        where: { userId: selectedTaId, date: { startsWith: month } },
-        orderBy: [{ date: "asc" }, { startTime: "asc" }],
-      })
-    : [];
+  const [viewSessions, viewExpenses] = selectedTaId
+    ? await Promise.all([
+        prisma.workSession.findMany({
+          where: { userId: selectedTaId, date: { startsWith: month } },
+          orderBy: [{ date: "asc" }, { startTime: "asc" }],
+        }),
+        prisma.reimbursement.findMany({
+          where: { userId: selectedTaId, date: { startsWith: month } },
+          orderBy: [{ date: "asc" }],
+        }),
+      ])
+    : [[], []];
 
   const totalHours = sumHours(viewSessions);
-  const totalPay = sumPay(viewSessions);
-  const taxAmount = Math.round(totalPay * TAX_RATE);
-  const netPay = totalPay - taxAmount;
+  const totals = settle(viewSessions, viewExpenses);
 
-  let summaryRows: { id: string; name: string; hours: number; pay: number; tax: number; net: number }[] = [];
+  type SummaryRow = {
+    id: string;
+    name: string;
+    hours: number;
+    workPay: number;
+    tax: number;
+    netWork: number;
+    expenses: number;
+    total: number;
+  };
+  let summaryRows: SummaryRow[] = [];
   if (tab === "payslip") {
-    const allMonthSessions = await prisma.workSession.findMany({ where: { date: { startsWith: month } } });
+    const [allSessions, allExpenses] = await Promise.all([
+      prisma.workSession.findMany({ where: { date: { startsWith: month } } }),
+      prisma.reimbursement.findMany({ where: { date: { startsWith: month } } }),
+    ]);
     summaryRows = tas.map((t) => {
-      const s = allMonthSessions.filter((sess) => sess.userId === t.id);
-      const pay = sumPay(s);
-      const tax = Math.round(pay * TAX_RATE);
-      return { id: t.id, name: t.name, hours: sumHours(s), pay, tax, net: pay - tax };
+      const s = allSessions.filter((sess) => sess.userId === t.id);
+      const e = allExpenses.filter((exp) => exp.userId === t.id);
+      return { id: t.id, name: t.name, hours: sumHours(s), ...settle(s, e) };
     });
   }
-  const grandHours = summaryRows.reduce((a, r) => a + r.hours, 0);
-  const grandPay = summaryRows.reduce((a, r) => a + r.pay, 0);
-  const grandTax = summaryRows.reduce((a, r) => a + r.tax, 0);
-  const grandNet = summaryRows.reduce((a, r) => a + r.net, 0);
+  const grand = (pick: (r: SummaryRow) => number) => summaryRows.reduce((a, r) => a + pick(r), 0);
 
   const tabHref = (t: string) => `/admin?tab=${t}${selectedTaId ? `&ta=${selectedTaId}` : ""}&month=${month}`;
 
@@ -240,6 +256,19 @@ export default async function AdminPage({
               )}
             </div>
           )}
+          {selectedTa && (
+            <div className="panel">
+              <h3>{selectedTa.name}님의 실비 정산 (비품비 · 심부름 결제)</h3>
+              <div className="hint">급여와 별도로, 원천징수 없이 전액 지급되는 항목입니다.</div>
+              <ReimbursementForm today={todayKST()} userId={selectedTa.id} />
+              <div style={{ marginTop: "1.25rem" }}>
+                <ReimbursementTable
+                  rows={viewExpenses}
+                  emptyLabel={`${monthLabel(month)}에 등록된 실비가 없습니다.`}
+                />
+              </div>
+            </div>
+          )}
         </>
       )}
 
@@ -250,6 +279,11 @@ export default async function AdminPage({
               <h2 style={{ margin: 0 }}>급여 명세서</h2>
               <div className="field-row">
                 <MonthFilter month={month} hidden={{ tab: "payslip", ta: selectedTaId ?? "" }} />
+                {selectedTa ? (
+                  <a className="btn btn-ghost" href={`/api/export/detail?ta=${selectedTa.id}&month=${month}`}>
+                    이 조교 엑셀
+                  </a>
+                ) : null}
                 {selectedTa ? <PrintButton /> : null}
               </div>
             </div>
@@ -304,41 +338,37 @@ export default async function AdminPage({
                 ) : (
                   <div className="empty-state">{monthLabel(month)}에 기록된 근무가 없습니다.</div>
                 )}
-                <div className="payslip-total-row">
-                  <div className="block">
-                    <div className="label">총 근무시간</div>
-                    <div className="amount">{hrs(totalHours)}시간</div>
+                {viewExpenses.length ? (
+                  <div style={{ marginTop: "1.5rem" }}>
+                    <h3>실비 정산 (비과세)</h3>
+                    <ReimbursementTable rows={viewExpenses} emptyLabel="" showDelete={false} />
                   </div>
-                  <div className="block">
-                    <div className="label">총 지급액</div>
-                    <div className="amount money">{won(totalPay)}</div>
-                  </div>
-                  <div className="block">
-                    <div className="label">원천징수 (3.3%)</div>
-                    <div className="amount deduction">−{won(taxAmount)}</div>
-                  </div>
-                  <div className="block net-block">
-                    <div className="label">실수령액</div>
-                    <div className="amount net">{won(netPay)}</div>
-                  </div>
-                </div>
+                ) : null}
+                <PayslipTotals totalHours={totalHours} {...totals} />
               </div>
             ) : (
               <div className="empty-state">아직 가입한 조교가 없습니다.</div>
             )}
           </div>
           <div className="panel">
-            <h3>{monthLabel(month)} 전체 조교 요약</h3>
+            <div className="toolbar">
+              <h3 style={{ margin: 0 }}>{monthLabel(month)} 전체 조교 요약</h3>
+              <a className="btn btn-primary" href={`/api/export/summary?month=${month}`}>
+                전체 요약 엑셀 내려받기
+              </a>
+            </div>
             {summaryRows.length ? (
               <div className="table-wrap">
                 <table className="ledger">
                   <thead>
                     <tr>
                       <th>이름</th>
-                      <th className="num">총 근무시간</th>
-                      <th className="num">총 지급액</th>
+                      <th className="num">근무시간</th>
+                      <th className="num">근무 급여</th>
                       <th className="num">원천징수 (3.3%)</th>
-                      <th className="num">실수령액</th>
+                      <th className="num">급여 실수령</th>
+                      <th className="num">실비 정산</th>
+                      <th className="num">최종 지급액</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -346,19 +376,23 @@ export default async function AdminPage({
                       <tr key={r.id}>
                         <td>{r.name}</td>
                         <td className="num">{hrs(r.hours)}</td>
-                        <td className="num">{won(r.pay)}</td>
+                        <td className="num">{won(r.workPay)}</td>
                         <td className="num">−{won(r.tax)}</td>
-                        <td className="num">{won(r.net)}</td>
+                        <td className="num">{won(r.netWork)}</td>
+                        <td className="num">{won(r.expenses)}</td>
+                        <td className="num">{won(r.total)}</td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
                     <tr>
                       <td>전체 합계</td>
-                      <td className="num">{hrs(grandHours)}</td>
-                      <td className="num">{won(grandPay)}</td>
-                      <td className="num">−{won(grandTax)}</td>
-                      <td className="num">{won(grandNet)}</td>
+                      <td className="num">{hrs(grand((r) => r.hours))}</td>
+                      <td className="num">{won(grand((r) => r.workPay))}</td>
+                      <td className="num">−{won(grand((r) => r.tax))}</td>
+                      <td className="num">{won(grand((r) => r.netWork))}</td>
+                      <td className="num">{won(grand((r) => r.expenses))}</td>
+                      <td className="num">{won(grand((r) => r.total))}</td>
                     </tr>
                   </tfoot>
                 </table>

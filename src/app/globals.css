@@ -327,8 +327,9 @@ table.ledger tfoot td {
 .payslip-total-row {
   display: flex;
   justify-content: flex-end;
+  align-items: flex-end;
   flex-wrap: wrap;
-  gap: 2rem;
+  gap: 1rem 1.75rem;
   margin-top: 1rem;
   padding-top: 1rem;
   border-top: 1px solid var(--line);

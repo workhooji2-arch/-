@@ -23,6 +23,21 @@ model User {
   currentClockIn DateTime?
   createdAt     DateTime      @default(now())
   sessions      WorkSession[]
+  reimbursements Reimbursement[]
+}
+
+/// 조교가 자기 돈으로 먼저 결제한 비품비·심부름 비용. 근로 소득이 아니라
+/// 실비 정산이므로 원천징수 없이 전액 지급된다.
+model Reimbursement {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      String
+  amount    Int
+  note      String
+  createdAt DateTime @default(now())
+
+  @@index([userId, date])
 }
 
 model WorkSession {

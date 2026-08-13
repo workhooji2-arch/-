@@ -50,3 +50,23 @@ export function sumHours(sessions: { hours: number }[]) {
 export function sumPay(sessions: { hours: number; wage: number }[]) {
   return sessions.reduce((acc, s) => acc + s.hours * s.wage, 0);
 }
+
+export function sumAmount(items: { amount: number }[]) {
+  return items.reduce((acc, i) => acc + i.amount, 0);
+}
+
+/**
+ * Withholding applies to the hourly pay only. Reimbursements are the TA being
+ * paid back for money they already spent, not income, so they are added after
+ * the deduction and paid in full.
+ */
+export function settle(
+  sessions: { hours: number; wage: number }[],
+  reimbursements: { amount: number }[],
+) {
+  const workPay = sumPay(sessions);
+  const tax = Math.round(workPay * TAX_RATE);
+  const netWork = workPay - tax;
+  const expenses = sumAmount(reimbursements);
+  return { workPay, tax, netWork, expenses, total: netWork + expenses };
+}

@@ -2,10 +2,10 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireTA } from "@/lib/session";
 import {
-  TAX_RATE,
   currentMonthKST,
   hrs,
   monthLabel,
+  settle,
   sumHours,
   sumPay,
   todayKST,
@@ -15,6 +15,9 @@ import LogoutButton from "@/components/LogoutButton";
 import MonthFilter from "@/components/MonthFilter";
 import DeleteButton from "@/components/DeleteButton";
 import PrintButton from "@/components/PrintButton";
+import PayslipTotals from "@/components/PayslipTotals";
+import ReimbursementForm from "@/components/ReimbursementForm";
+import ReimbursementTable from "@/components/ReimbursementTable";
 import TimerBox from "./TimerBox";
 import ManualEntryForm from "./ManualEntryForm";
 import { clockInAction, clockOutAction, deleteSessionAction } from "./actions";
@@ -31,13 +34,17 @@ export default async function DashboardPage({
   const nowMonth = currentMonthKST();
   const month = sp.month || nowMonth;
 
-  const [thisMonthSessions, viewSessions] = await Promise.all([
+  const [thisMonthSessions, viewSessions, viewExpenses] = await Promise.all([
     month === nowMonth
       ? Promise.resolve(null)
       : prisma.workSession.findMany({ where: { userId: user.id, date: { startsWith: nowMonth } } }),
     prisma.workSession.findMany({
       where: { userId: user.id, date: { startsWith: month } },
       orderBy: [{ date: "asc" }, { startTime: "asc" }],
+    }),
+    prisma.reimbursement.findMany({
+      where: { userId: user.id, date: { startsWith: month } },
+      orderBy: [{ date: "asc" }],
     }),
   ]);
 
@@ -46,9 +53,7 @@ export default async function DashboardPage({
   const headerPay = sumPay(headerSessions);
 
   const totalHours = sumHours(viewSessions);
-  const totalPay = sumPay(viewSessions);
-  const taxAmount = Math.round(totalPay * TAX_RATE);
-  const netPay = totalPay - taxAmount;
+  const totals = settle(viewSessions, viewExpenses);
 
   return (
     <div className="shell">
@@ -151,6 +156,19 @@ export default async function DashboardPage({
               <div className="empty-state">{monthLabel(month)}에 기록된 근무가 없습니다.</div>
             )}
           </div>
+          <div className="panel">
+            <h3>실비 정산 (비품비 · 심부름 결제)</h3>
+            <div className="hint">
+              직접 결제한 금액을 올리면 급여와 별도로, 세금 없이 전액 그대로 지급됩니다.
+            </div>
+            <ReimbursementForm today={todayKST()} />
+            <div style={{ marginTop: "1.25rem" }}>
+              <ReimbursementTable
+                rows={viewExpenses}
+                emptyLabel={`${monthLabel(month)}에 등록된 실비가 없습니다.`}
+              />
+            </div>
+          </div>
         </>
       ) : (
         <div className="panel">
@@ -158,6 +176,9 @@ export default async function DashboardPage({
             <h2 style={{ margin: 0 }}>급여 명세서</h2>
             <div className="field-row">
               <MonthFilter month={month} hidden={{ tab: "payslip" }} />
+              <a className="btn btn-ghost" href={`/api/export/detail?month=${month}`}>
+                엑셀 내려받기
+              </a>
               <PrintButton />
             </div>
           </div>
@@ -198,24 +219,13 @@ export default async function DashboardPage({
             ) : (
               <div className="empty-state">{monthLabel(month)}에 기록된 근무가 없습니다.</div>
             )}
-            <div className="payslip-total-row">
-              <div className="block">
-                <div className="label">총 근무시간</div>
-                <div className="amount">{hrs(totalHours)}시간</div>
+            {viewExpenses.length ? (
+              <div style={{ marginTop: "1.5rem" }}>
+                <h3>실비 정산 (비과세)</h3>
+                <ReimbursementTable rows={viewExpenses} emptyLabel="" showDelete={false} />
               </div>
-              <div className="block">
-                <div className="label">총 지급액</div>
-                <div className="amount money">{won(totalPay)}</div>
-              </div>
-              <div className="block">
-                <div className="label">원천징수 (3.3%)</div>
-                <div className="amount deduction">−{won(taxAmount)}</div>
-              </div>
-              <div className="block net-block">
-                <div className="label">실수령액</div>
-                <div className="amount net">{won(netPay)}</div>
-              </div>
-            </div>
+            ) : null}
+            <PayslipTotals totalHours={totalHours} {...totals} />
           </div>
         </div>
       )}
