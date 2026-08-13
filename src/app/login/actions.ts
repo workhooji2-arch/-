@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { verifyPassword } from "@/lib/auth";
 import { setSessionCookie } from "@/lib/session";
 import { ensureAdminAccount } from "@/lib/ensure-admin";
+import { SETUP_INCOMPLETE } from "@/lib/messages";
 
 export type FormState = { error: string } | undefined;
 
@@ -28,6 +29,12 @@ export async function loginAction(_prev: FormState, formData: FormData): Promise
     return { error: "아이디 또는 비밀번호가 올바르지 않습니다." };
   }
 
-  await setSessionCookie({ sub: user.id, role: user.role });
+  try {
+    await setSessionCookie({ sub: user.id, role: user.role });
+  } catch (error) {
+    console.error("세션을 만들지 못했습니다:", error);
+    return { error: SETUP_INCOMPLETE };
+  }
+
   redirect(user.role === "ADMIN" ? "/admin" : "/dashboard");
 }

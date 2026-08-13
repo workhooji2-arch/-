@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
 import { setSessionCookie } from "@/lib/session";
+import { SETUP_INCOMPLETE } from "@/lib/messages";
 
 export type FormState = { error: string } | undefined;
 
@@ -42,6 +43,12 @@ export async function signupAction(_prev: FormState, formData: FormData): Promis
     throw e;
   }
 
-  await setSessionCookie({ sub: userId, role: "TA" });
+  try {
+    await setSessionCookie({ sub: userId, role: "TA" });
+  } catch (error) {
+    console.error("세션을 만들지 못했습니다:", error);
+    return { error: SETUP_INCOMPLETE };
+  }
+
   redirect("/dashboard");
 }
