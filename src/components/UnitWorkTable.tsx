@@ -2,7 +2,7 @@ import { won } from "@/lib/payroll";
 import { deleteUnitWorkAction } from "@/lib/unit-work-actions";
 import DeleteButton from "./DeleteButton";
 
-type Row = { id: string; date: string; quantity: number; rate: number; note: string | null };
+type Row = { id: string; date: string; label: string; quantity: number; rate: number; note: string | null };
 
 export default function UnitWorkTable({
   rows,
@@ -24,6 +24,7 @@ export default function UnitWorkTable({
         <thead>
           <tr>
             <th className="num">날짜</th>
+            <th>업무</th>
             <th className="num">개수</th>
             <th className="num">단가</th>
             <th className="num">금액</th>
@@ -35,6 +36,7 @@ export default function UnitWorkTable({
           {rows.map((r) => (
             <tr key={r.id}>
               <td className="num">{r.date}</td>
+              <td>{r.label}</td>
               <td className="num">{r.quantity.toLocaleString("ko-KR")}개</td>
               <td className="num">{won(r.rate)}</td>
               <td className="num">{won(r.quantity * r.rate)}</td>
@@ -53,7 +55,7 @@ export default function UnitWorkTable({
         </tbody>
         <tfoot>
           <tr>
-            <td>합계</td>
+            <td colSpan={2}>합계</td>
             <td className="num">{totalQty.toLocaleString("ko-KR")}개</td>
             <td></td>
             <td className="num">{won(totalPay)}</td>

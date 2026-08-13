@@ -37,7 +37,7 @@ export default async function DashboardPage({
   const nowMonth = currentMonthKST();
   const month = sp.month || nowMonth;
 
-  const [thisMonthSessions, viewSessions, viewExpenses, viewUnits] = await Promise.all([
+  const [thisMonthSessions, viewSessions, viewExpenses, viewUnits, myTasks] = await Promise.all([
     month === nowMonth
       ? Promise.resolve(null)
       : prisma.workSession.findMany({ where: { userId: user.id, date: { startsWith: nowMonth } } }),
@@ -53,6 +53,7 @@ export default async function DashboardPage({
       where: { userId: user.id, date: { startsWith: month } },
       orderBy: [{ date: "asc" }],
     }),
+    prisma.unitTask.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" } }),
   ]);
 
   const headerSessions = thisMonthSessions ?? viewSessions;
@@ -95,10 +96,10 @@ export default async function DashboardPage({
           <div className="value">{won(headerPay)}</div>
         </div>
         <div className="stat-card">
-          <div className="label">{user.unitRate && !user.wage ? "개당 단가" : "시급"}</div>
+          <div className="label">{!user.wage && myTasks.length ? "등록된 업무" : "시급"}</div>
           <div className="value">
-            {user.unitRate && !user.wage
-              ? won(user.unitRate)
+            {!user.wage && myTasks.length
+              ? `${myTasks.length}종`
               : user.wage
                 ? won(user.wage)
                 : "미설정"}
@@ -115,10 +116,10 @@ export default async function DashboardPage({
         </Link>
       </nav>
 
-      {!user.wage && !user.unitRate ? (
+      {!user.wage && !myTasks.length ? (
         <div className="panel">
           <div className="empty-state">
-            아직 시급이나 개당 단가가 설정되지 않았습니다. 관리자가 설정하면 기록을 시작할 수 있습니다.
+            아직 시급이나 개수 업무 단가가 설정되지 않았습니다. 관리자가 설정하면 기록을 시작할 수 있습니다.
           </div>
         </div>
       ) : tab === "log" ? (
@@ -134,10 +135,10 @@ export default async function DashboardPage({
               <ManualEntryForm today={todayKST()} />
             </div>
           ) : null}
-          {user.unitRate ? (
+          {myTasks.length ? (
             <div className="panel">
               <h2>개수 작업</h2>
-              <UnitWorkForm today={todayKST()} rate={user.unitRate} />
+              <UnitWorkForm today={todayKST()} tasks={myTasks} />
               <div style={{ marginTop: "1.25rem" }}>
                 <UnitWorkTable
                   rows={viewUnits}
@@ -230,7 +231,7 @@ export default async function DashboardPage({
               <div className="period">
                 {monthLabel(month)} 급여 명세서
                 {user.wage ? ` · 시급 ${won(user.wage)}` : ""}
-                {user.unitRate ? ` · 개당 ${won(user.unitRate)}` : ""}
+                {myTasks.length ? ` · 개수 업무 ${myTasks.length}종` : ""}
               </div>
             </div>
             {viewSessions.length ? (

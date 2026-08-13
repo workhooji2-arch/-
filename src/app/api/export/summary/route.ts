@@ -38,7 +38,6 @@ export async function GET(request: NextRequest) {
       "이름",
       "아이디",
       "시급",
-      "개당 단가",
       "근무시간",
       "시간 급여",
       "개수 급여",
@@ -52,7 +51,6 @@ export async function GET(request: NextRequest) {
       r.ta.name,
       r.ta.username,
       r.ta.wage ?? "",
-      r.ta.unitRate ?? "",
       r.hours,
       r.hourlyPay,
       r.unitPay,
@@ -64,7 +62,6 @@ export async function GET(request: NextRequest) {
     ]),
     [
       "전체 합계",
-      "",
       "",
       "",
       sum((r) => r.hours),

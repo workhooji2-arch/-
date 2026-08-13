@@ -44,21 +44,17 @@ export async function resetTaPasswordAction(
 }
 
 /**
- * A TA is paid by the hour, by the piece, or both, and which one is simply
- * whether that rate is filled in. Leaving a field blank clears that kind of
- * pay, so at least one has to be given.
+ * Sets the hourly rate. Leaving it blank means this TA is not paid by the hour;
+ * piece-rate work is set up separately as tasks, since each task has its own
+ * rate.
  */
 export async function setWageAction(_prev: FormState, formData: FormData): Promise<FormState> {
   await requireAdmin();
   const userId = String(formData.get("userId") || "");
   const wageInput = String(formData.get("wage") || "").trim();
-  const unitRateInput = String(formData.get("unitRate") || "").trim();
   const memo = String(formData.get("memo") || "").trim();
 
   if (!userId) return { error: "대상 조교를 찾을 수 없습니다." };
-  if (!wageInput && !unitRateInput) {
-    return { error: "시급과 개당 단가 중 최소 하나는 입력해주세요." };
-  }
   if (memo.length > 200) {
     return { error: "비고는 200자 이내로 입력해주세요." };
   }
@@ -71,20 +67,12 @@ export async function setWageAction(_prev: FormState, formData: FormData): Promi
     wage = Math.round(value);
   }
 
-  let unitRate: number | null = null;
-  if (unitRateInput) {
-    const value = Number(unitRateInput);
-    const bad = amountError(value, MAX_WAGE, "개당 단가");
-    if (bad) return { error: bad };
-    unitRate = Math.round(value);
-  }
-
   const target = await prisma.user.findUnique({ where: { id: userId } });
   if (!target || target.role !== "TA") {
     return { error: "대상 조교를 찾을 수 없습니다." };
   }
 
-  await prisma.user.update({ where: { id: userId }, data: { wage, unitRate, memo } });
+  await prisma.user.update({ where: { id: userId }, data: { wage, memo } });
   revalidatePath("/admin");
   return undefined;
 }

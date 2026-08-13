@@ -27,8 +27,14 @@ export async function addUnitWorkAction(
 
   const target = await prisma.user.findUnique({ where: { id: targetId } });
   if (!target || target.role !== "TA") return { error: "대상 조교를 찾을 수 없습니다." };
-  if (!target.unitRate) {
-    return { error: "이 조교는 개당 단가가 설정되어 있지 않습니다. 관리자에게 요청하세요." };
+
+  // The rate comes from the chosen task, never from the form, and the task has
+  // to belong to this TA — otherwise anyone could price their own work.
+  const taskId = String(formData.get("taskId") || "");
+  if (!taskId) return { error: "업무를 선택해주세요." };
+  const task = await prisma.unitTask.findFirst({ where: { id: taskId, userId: targetId } });
+  if (!task) {
+    return { error: "선택한 업무를 찾을 수 없습니다. 관리자에게 업무 단가 등록을 요청하세요." };
   }
 
   const date = String(formData.get("date") || "");
@@ -45,7 +51,15 @@ export async function addUnitWorkAction(
   }
 
   await prisma.unitWork.create({
-    data: { userId: targetId, date, quantity, rate: target.unitRate, note },
+    data: {
+      userId: targetId,
+      taskId: task.id,
+      label: task.label,
+      date,
+      quantity,
+      rate: task.rate,
+      note,
+    },
   });
 
   revalidatePath(viewer.role === "ADMIN" ? "/admin" : "/dashboard");

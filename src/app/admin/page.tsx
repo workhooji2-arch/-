@@ -26,6 +26,7 @@ import WageForm from "./WageForm";
 import ResetPasswordForm from "./ResetPasswordForm";
 import AdminSessionForm from "./AdminSessionForm";
 import BudgetForm from "./BudgetPanel";
+import UnitTaskManager from "./UnitTaskManager";
 import { deleteTaAction, deleteSessionAdminAction } from "./actions";
 
 export default async function AdminPage({
@@ -38,10 +39,11 @@ export default async function AdminPage({
   const tab = sp.tab === "log" || sp.tab === "payslip" ? sp.tab : "tas";
   const month = sp.month || currentMonthKST();
 
-  const tas = await prisma.user.findMany({
-    where: { role: "TA" },
-    orderBy: { createdAt: "asc" },
-  });
+  const [tas, allTasks] = await Promise.all([
+    prisma.user.findMany({ where: { role: "TA" }, orderBy: { createdAt: "asc" } }),
+    prisma.unitTask.findMany({ orderBy: { createdAt: "asc" } }),
+  ]);
+  const tasksFor = (userId: string) => allTasks.filter((t) => t.userId === userId);
 
   const nowMonth = currentMonthKST();
   const [monthSessionsAll, monthUnitsAll] = await Promise.all([
@@ -158,8 +160,9 @@ export default async function AdminPage({
         <div className="panel">
           <h2>조교 관리</h2>
           <div className="hint">
-            조교가 직접 가입하면 이 목록에 나타납니다. 시급 또는 개당 단가를 설정해야 해당 조교가 기록을 남길 수
-            있고, 둘 다 넣으면 두 급여를 합산해서 받습니다. 단가를 수정해도 이미 기록된 건의 금액은 바뀌지 않습니다.
+            조교가 직접 가입하면 이 목록에 나타납니다. 시간제로 일하면 시급을, 개수제로 일하면 아래에서 업무별
+            단가를 등록해주세요. 둘 다 있으면 두 급여를 합산해 받습니다. 단가를 바꿔도 이미 기록된 건의 금액은
+            그대로입니다.
           </div>
           {tas.length ? (
             <div className="table-wrap">
@@ -169,7 +172,7 @@ export default async function AdminPage({
                     <th>이름</th>
                     <th>아이디</th>
                     <th className="num">시급</th>
-                    <th className="num">개당 단가</th>
+                    <th className="num">개수 업무</th>
                     <th>비고</th>
                     <th>관리</th>
                   </tr>
@@ -180,17 +183,14 @@ export default async function AdminPage({
                       <td>{t.name}</td>
                       <td>{t.username}</td>
                       <td className="num">{t.wage ? won(t.wage) + " / 시간" : "—"}</td>
-                      <td className="num">{t.unitRate ? won(t.unitRate) + " / 개" : "—"}</td>
+                      <td className="num">
+                        {tasksFor(t.id).length ? `${tasksFor(t.id).length}종` : "—"}
+                      </td>
                       <td>{t.memo}</td>
                       <td>
                         <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", alignItems: "flex-start" }}>
                           <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
-                            <WageForm
-                              userId={t.id}
-                              currentWage={t.wage}
-                              currentUnitRate={t.unitRate}
-                              currentMemo={t.memo}
-                            />
+                            <WageForm userId={t.id} currentWage={t.wage} currentMemo={t.memo} />
                             <ResetPasswordForm userId={t.id} name={t.name} />
                             <DeleteButton
                               action={deleteTaAction}
@@ -212,6 +212,17 @@ export default async function AdminPage({
         </div>
       )}
 
+      {tab === "tas" &&
+        tas.map((t) => (
+          <div className="panel" key={`tasks-${t.id}`}>
+            <h3>{t.name}님의 개수 업무 단가</h3>
+            <div className="hint">
+              업무마다 단가가 다르면 여러 개를 등록하세요. 조교는 기록할 때 업무를 골라 개수만 입력합니다.
+            </div>
+            <UnitTaskManager userId={t.id} tasks={tasksFor(t.id)} />
+          </div>
+        ))}
+
       {tab === "log" && (
         <>
           <div className="panel">
@@ -232,9 +243,10 @@ export default async function AdminPage({
                 {selectedTa && selectedTa.wage ? (
                   <AdminSessionForm userId={selectedTa.id} today={todayKST()} />
                 ) : null}
-                {selectedTa && !selectedTa.wage && !selectedTa.unitRate ? (
+                {selectedTa && !selectedTa.wage && !tasksFor(selectedTa.id).length ? (
                   <div className="empty-state">
-                    이 조교는 시급과 개당 단가가 모두 설정되지 않아 기록을 남길 수 없습니다.
+                    이 조교는 시급도 개수 업무도 설정되지 않아 기록을 남길 수 없습니다. 조교 관리 탭에서
+                    먼저 설정해주세요.
                   </div>
                 ) : null}
               </>
@@ -292,10 +304,10 @@ export default async function AdminPage({
               )}
             </div>
           )}
-          {selectedTa && selectedTa.unitRate ? (
+          {selectedTa && tasksFor(selectedTa.id).length ? (
             <div className="panel">
               <h3>{selectedTa.name}님의 개수 작업</h3>
-              <UnitWorkForm today={todayKST()} rate={selectedTa.unitRate} userId={selectedTa.id} />
+              <UnitWorkForm today={todayKST()} tasks={tasksFor(selectedTa.id)} userId={selectedTa.id} />
               <div style={{ marginTop: "1.25rem" }}>
                 <UnitWorkTable
                   rows={viewUnits}

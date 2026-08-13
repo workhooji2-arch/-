@@ -20,9 +20,6 @@ model User {
   name          String
   /// 시급(원). 시간제로 일하지 않는 조교는 비어 있다.
   wage          Int?
-  /// 개당 단가(원). 개수제로 일하지 않는 조교는 비어 있다. 두 값을 모두
-  /// 채우면 시간 급여와 개수 급여를 합산해서 받는다.
-  unitRate      Int?
   memo          String?
   currentClockIn DateTime?
   createdAt     DateTime      @default(now())
@@ -32,19 +29,38 @@ model User {
   sessions      WorkSession[]
   reimbursements Reimbursement[]
   unitWorks     UnitWork[]
+  unitTasks     UnitTask[]
 }
 
-/// 개수제 작업 한 건. 단가는 기록 시점 값을 함께 저장해, 나중에 단가를
-/// 바꿔도 이미 기록된 금액이 흔들리지 않게 한다.
-model UnitWork {
-  id        String   @id @default(cuid())
+/// 개수제 업무 한 종류와 그 단가. 업무마다 단가가 다르므로 조교 한 명이
+/// 여러 개를 가질 수 있다.
+model UnitTask {
+  id        String     @id @default(cuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label     String
+  rate      Int
+  createdAt DateTime   @default(now())
+  works     UnitWork[]
+
+  @@unique([userId, label])
+  @@index([userId])
+}
+
+/// 개수제 작업 한 건. 업무명과 단가를 기록 시점 값으로 함께 저장해, 나중에
+/// 단가를 바꾸거나 업무를 지워도 이미 기록된 금액이 흔들리지 않게 한다.
+model UnitWork {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId    String?
+  task      UnitTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  label     String    @default("개수 작업")
   date      String
   quantity  Int
   rate      Int
   note      String?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([userId, date])
 }
