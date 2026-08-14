@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { requireUser } from "@/lib/session";
+import { requireAdmin, requireUser } from "@/lib/session";
 import { isValidDate } from "@/lib/validation";
 
 export type FormState = { error: string } | undefined;
@@ -64,6 +64,60 @@ export async function addUnitWorkAction(
 
   revalidatePath(viewer.role === "ADMIN" ? "/admin" : "/dashboard");
   return undefined;
+}
+
+export type EditState = { error: string } | { saved: true } | undefined;
+
+/**
+ * Admin-only, like the other corrections. Switching the task is allowed and
+ * takes that task's current rate, which is a deliberate repricing; leaving the
+ * task alone keeps the rate the entry was recorded with.
+ */
+export async function updateUnitWorkAction(
+  _prev: EditState,
+  formData: FormData,
+): Promise<EditState> {
+  await requireAdmin();
+  const id = String(formData.get("id") || "");
+  if (!id) return { error: "기록을 찾을 수 없습니다." };
+
+  const existing = await prisma.unitWork.findUnique({ where: { id } });
+  if (!existing) return { error: "기록을 찾을 수 없습니다." };
+
+  const date = String(formData.get("date") || "");
+  const note = String(formData.get("note") || "").trim();
+  const quantity = Number(formData.get("quantity"));
+  const taskId = String(formData.get("taskId") || "");
+
+  if (!isValidDate(date)) return { error: "날짜를 올바르게 입력해주세요." };
+  if (note.length > 200) return { error: "비고는 200자 이내로 입력해주세요." };
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    return { error: "개수를 1개 이상의 정수로 입력해주세요." };
+  }
+  if (quantity > MAX_QUANTITY) {
+    return { error: `개수가 너무 많습니다. ${MAX_QUANTITY.toLocaleString("ko-KR")}개 이하로 입력해주세요.` };
+  }
+
+  let label = existing.label;
+  let rate = existing.rate;
+  let nextTaskId = existing.taskId;
+
+  if (taskId && taskId !== existing.taskId) {
+    const task = await prisma.unitTask.findFirst({ where: { id: taskId, userId: existing.userId } });
+    if (!task) return { error: "선택한 업무를 찾을 수 없습니다." };
+    label = task.label;
+    rate = task.rate;
+    nextTaskId = task.id;
+  }
+
+  await prisma.unitWork.update({
+    where: { id },
+    data: { date, quantity, note, label, rate, taskId: nextTaskId },
+  });
+
+  revalidatePath("/admin");
+  revalidatePath("/dashboard");
+  return { saved: true };
 }
 
 export async function deleteUnitWorkAction(formData: FormData) {

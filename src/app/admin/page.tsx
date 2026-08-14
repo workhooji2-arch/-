@@ -267,6 +267,7 @@ export default async function AdminPage({
                 rows={viewSessions}
                 totalHours={totalHours}
                 emptyLabel={`${monthLabel(month)}에 기록된 근무가 없습니다.`}
+                canEdit
               />
 
             </div>
@@ -279,6 +280,8 @@ export default async function AdminPage({
                 <UnitWorkTable
                   rows={viewUnits}
                   emptyLabel={`${monthLabel(month)}에 등록된 개수 작업이 없습니다.`}
+                  tasks={tasksFor(selectedTa.id)}
+                  canEdit
                 />
               </div>
             </div>
@@ -292,6 +295,7 @@ export default async function AdminPage({
                 <ReimbursementTable
                   rows={viewExpenses}
                   emptyLabel={`${monthLabel(month)}에 등록된 실비가 없습니다.`}
+                  canEdit
                 />
               </div>
             </div>

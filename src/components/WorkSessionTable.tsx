@@ -67,10 +67,12 @@ export default function WorkSessionTable({
   rows,
   totalHours,
   emptyLabel,
+  canEdit = false,
 }: {
   rows: Row[];
   totalHours: number;
   emptyLabel: string;
+  canEdit?: boolean;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -91,7 +93,7 @@ export default function WorkSessionTable({
         </thead>
         <tbody>
           {rows.map((r) =>
-            editingId === r.id ? (
+            canEdit && editingId === r.id ? (
               <EditRow key={r.id} row={r} onClose={() => setEditingId(null)} />
             ) : (
               <tr key={r.id}>
@@ -102,13 +104,15 @@ export default function WorkSessionTable({
                 <td>{r.note}</td>
                 <td>
                   <div style={{ display: "flex", gap: "0.4rem" }}>
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => setEditingId(r.id)}
-                    >
-                      수정
-                    </button>
+                    {canEdit ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => setEditingId(r.id)}
+                      >
+                        수정
+                      </button>
+                    ) : null}
                     <form
                       action={deleteWorkSessionAction}
                       onSubmit={(e) => {

@@ -2,30 +2,28 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { requireUser } from "@/lib/session";
+import { requireAdmin, requireUser } from "@/lib/session";
 import { toMinutes } from "@/lib/payroll";
 import { isValidDate, isValidTime } from "@/lib/validation";
 
 export type FormState = { error: string } | { saved: true } | undefined;
 
 /**
- * Editing recalculates the hours from the new times but keeps the rate that was
- * stored when the entry was made, so correcting a typo cannot silently reprice
- * past work. A TA may only touch their own rows; an admin may touch any.
+ * Editing is the admin's job: a recorded entry is what the pay is calculated
+ * from, so it should not change under the person being paid. The hours are
+ * recalculated from the new times while the rate stored at the time is left
+ * alone, so a correction cannot reprice past work.
  */
 export async function updateWorkSessionAction(
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const viewer = await requireUser();
+  await requireAdmin();
   const id = String(formData.get("id") || "");
   if (!id) return { error: "기록을 찾을 수 없습니다." };
 
   const existing = await prisma.workSession.findUnique({ where: { id } });
   if (!existing) return { error: "기록을 찾을 수 없습니다." };
-  if (viewer.role !== "ADMIN" && existing.userId !== viewer.id) {
-    return { error: "본인의 기록만 수정할 수 있습니다." };
-  }
 
   const date = String(formData.get("date") || "");
   const start = String(formData.get("start") || "");
@@ -52,7 +50,8 @@ export async function updateWorkSessionAction(
     data: { date, startTime: start, endTime: end, hours, note },
   });
 
-  revalidatePath(viewer.role === "ADMIN" ? "/admin" : "/dashboard");
+  revalidatePath("/admin");
+  revalidatePath("/dashboard");
   return { saved: true };
 }
 

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { requireUser } from "@/lib/session";
+import { requireAdmin, requireUser } from "@/lib/session";
 import { MAX_AMOUNT, amountError, isValidDate } from "@/lib/validation";
 
 export type FormState = { error: string } | undefined;
@@ -44,6 +44,44 @@ export async function addReimbursementAction(
 
   revalidatePath(viewer.role === "ADMIN" ? "/admin" : "/dashboard");
   return undefined;
+}
+
+export type EditState = { error: string } | { saved: true } | undefined;
+
+/**
+ * Corrections are the admin's to make — an amount that has been filed is what
+ * gets paid out, so it should not change under the person claiming it.
+ */
+export async function updateReimbursementAction(
+  _prev: EditState,
+  formData: FormData,
+): Promise<EditState> {
+  await requireAdmin();
+  const id = String(formData.get("id") || "");
+  if (!id) return { error: "항목을 찾을 수 없습니다." };
+
+  const existing = await prisma.reimbursement.findUnique({ where: { id } });
+  if (!existing) return { error: "항목을 찾을 수 없습니다." };
+
+  const date = String(formData.get("date") || "");
+  const note = String(formData.get("note") || "").trim();
+  const amount = Number(formData.get("amount"));
+
+  if (!isValidDate(date)) return { error: "날짜를 올바르게 입력해주세요." };
+  if (!note) return { error: "내용을 입력해주세요." };
+  if (note.length > 200) return { error: "내용은 200자 이내로 입력해주세요." };
+
+  const badAmount = amountError(amount, MAX_AMOUNT, "금액");
+  if (badAmount) return { error: badAmount };
+
+  await prisma.reimbursement.update({
+    where: { id },
+    data: { date, note, amount: Math.round(amount) },
+  });
+
+  revalidatePath("/admin");
+  revalidatePath("/dashboard");
+  return { saved: true };
 }
 
 export async function deleteReimbursementAction(formData: FormData) {
