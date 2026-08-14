@@ -65,7 +65,7 @@ export async function addSessionAction(_prev: FormState, formData: FormData): Pr
     return { error: "날짜와 시각을 올바르게 입력해주세요." };
   }
   if (note.length > 200) {
-    return { error: "비고는 200자 이내로 입력해주세요." };
+    return { error: "업무 내용은 200자 이내로 입력해주세요." };
   }
   const startMin = toMinutes(start);
   const endMin = toMinutes(end);
@@ -81,12 +81,4 @@ export async function addSessionAction(_prev: FormState, formData: FormData): Pr
 
   revalidatePath("/dashboard");
   return undefined;
-}
-
-export async function deleteSessionAction(formData: FormData) {
-  const user = await requireTA();
-  const id = String(formData.get("id") || "");
-  if (!id) return;
-  await prisma.workSession.deleteMany({ where: { id, userId: user.id } });
-  revalidatePath("/dashboard");
 }

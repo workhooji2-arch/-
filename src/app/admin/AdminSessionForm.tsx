@@ -24,8 +24,8 @@ export default function AdminSessionForm({ userId, today }: { userId: string; to
           <input id="end" name="end" type="time" required />
         </div>
         <div className="field grow">
-          <label htmlFor="note">비고 (선택)</label>
-          <input id="note" name="note" type="text" placeholder="예: 관리자 수정" />
+          <label htmlFor="note">업무 내용 (선택)</label>
+          <input id="note" name="note" type="text" placeholder="예: 고3 인스터디 및 모고감독" />
         </div>
         <button type="submit" className="btn btn-primary" disabled={pending}>
           {pending ? "추가 중…" : "기록 추가"}

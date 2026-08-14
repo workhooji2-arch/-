@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
     [`${target.name} — ${monthLabel(month)} 급여 내역`],
     [],
     ["근무 기록"],
-    ["날짜", "출근", "퇴근", "시간", "시급", "금액", "비고"],
+    ["날짜", "출근", "퇴근", "시간", "시급", "금액", "업무 내용"],
     ...sessions.map((s) => [
       s.date,
       s.startTime,

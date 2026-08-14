@@ -14,16 +14,16 @@ import {
 } from "@/lib/payroll";
 import LogoutButton from "@/components/LogoutButton";
 import MonthFilter from "@/components/MonthFilter";
-import DeleteButton from "@/components/DeleteButton";
 import PrintButton from "@/components/PrintButton";
 import PayslipTotals from "@/components/PayslipTotals";
 import ReimbursementForm from "@/components/ReimbursementForm";
 import ReimbursementTable from "@/components/ReimbursementTable";
 import UnitWorkForm from "@/components/UnitWorkForm";
 import UnitWorkTable from "@/components/UnitWorkTable";
+import WorkSessionTable from "@/components/WorkSessionTable";
 import TimerBox from "./TimerBox";
 import ManualEntryForm from "./ManualEntryForm";
-import { clockInAction, clockOutAction, deleteSessionAction } from "./actions";
+import { clockInAction, clockOutAction } from "./actions";
 import { logoutAction } from "@/lib/actions";
 
 export default async function DashboardPage({
@@ -158,45 +158,12 @@ export default async function DashboardPage({
               <div className="empty-state">
                 시간제 근무는 하지 않는 조교입니다. 위 개수 작업 기록을 사용하세요.
               </div>
-            ) : viewSessions.length ? (
-              <div className="table-wrap">
-                <table className="ledger">
-                  <thead>
-                    <tr>
-                      <th className="num">날짜</th>
-                      <th className="num">출근</th>
-                      <th className="num">퇴근</th>
-                      <th className="num">시간</th>
-                      <th>비고</th>
-                      <th>관리</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {viewSessions.map((s) => (
-                      <tr key={s.id}>
-                        <td className="num">{s.date}</td>
-                        <td className="num">{s.startTime}</td>
-                        <td className="num">{s.endTime}</td>
-                        <td className="num">{hrs(s.hours)}</td>
-                        <td>{s.note}</td>
-                        <td>
-                          <DeleteButton action={deleteSessionAction} id={s.id} confirmText="이 근무 기록을 삭제할까요?" />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr>
-                      <td colSpan={3}>합계</td>
-                      <td className="num">{hrs(totalHours)}</td>
-                      <td></td>
-                      <td></td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
             ) : (
-              <div className="empty-state">{monthLabel(month)}에 기록된 근무가 없습니다.</div>
+              <WorkSessionTable
+                rows={viewSessions}
+                totalHours={totalHours}
+                emptyLabel={`${monthLabel(month)}에 기록된 근무가 없습니다.`}
+              />
             )}
           </div>
           <div className="panel">
