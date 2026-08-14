@@ -99,6 +99,16 @@ export async function setBudgetAction(_prev: ResetState, formData: FormData): Pr
   return { done: "월 예산을 저장했습니다." };
 }
 
+/**
+ * Clears the budget so the panel goes back to asking for one. Zero means unset
+ * here — no payroll figures are touched.
+ */
+export async function clearBudgetAction() {
+  await requireAdmin();
+  await prisma.setting.updateMany({ where: { id: "singleton" }, data: { monthlyBudget: 0 } });
+  revalidatePath("/admin");
+}
+
 export async function deleteTaAction(formData: FormData) {
   await requireAdmin();
   const id = String(formData.get("id") || "");

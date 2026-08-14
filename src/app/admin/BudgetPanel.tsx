@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { setBudgetAction } from "./actions";
+import { clearBudgetAction, setBudgetAction } from "./actions";
 import type { ResetState } from "./actions";
 
 export default function BudgetForm({ currentBudget }: { currentBudget: number }) {
@@ -13,9 +13,25 @@ export default function BudgetForm({ currentBudget }: { currentBudget: number })
 
   if (!editing) {
     return (
-      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>
-        {currentBudget > 0 ? "월 예산 수정" : "월 예산 설정"}
-      </button>
+      <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>
+          {currentBudget > 0 ? "월 예산 수정" : "월 예산 설정"}
+        </button>
+        {currentBudget > 0 ? (
+          <form
+            action={clearBudgetAction}
+            onSubmit={(e) => {
+              if (!confirm("월 예산을 지울까요? 근무 기록과 급여는 그대로 남습니다.")) {
+                e.preventDefault();
+              }
+            }}
+          >
+            <button type="submit" className="btn btn-danger btn-sm">
+              예산 삭제
+            </button>
+          </form>
+        ) : null}
+      </div>
     );
   }
 
