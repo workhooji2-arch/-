@@ -65,12 +65,12 @@ model UnitWork {
   @@index([userId, date])
 }
 
-/// 앱 전체에 하나만 존재하는 설정 행. 관리자가 받는 월 예산을 담아, 조교
-/// 인건비를 빼고 얼마가 남는지 계산하는 데 쓴다.
-model Setting {
-  id            String   @id @default("singleton")
-  monthlyBudget Int      @default(0)
-  updatedAt     DateTime @updatedAt
+/// 관리자가 그 달에 쓸 수 있는 예산. 달마다 금액이 다르므로 월(YYYY-MM)을
+/// 키로 두고, 조교 인건비를 빼고 얼마가 남는지 계산하는 데 쓴다.
+model MonthlyBudget {
+  month     String   @id
+  amount    Int
+  updatedAt DateTime @updatedAt
 }
 
 /// 조교가 자기 돈으로 먼저 결제한 비품비·심부름 비용. 근로 소득이 아니라

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/session";
-import { toMinutes } from "@/lib/payroll";
+import { monthLabel, toMinutes } from "@/lib/payroll";
 import { hashPassword } from "@/lib/auth";
 import { MAX_WAGE, amountError, isValidDate, isValidTime, passwordError } from "@/lib/validation";
 
@@ -77,10 +77,18 @@ export async function setWageAction(_prev: FormState, formData: FormData): Promi
   return undefined;
 }
 
+/**
+ * The budget is stored against the month it belongs to, so entering one for
+ * August leaves July alone.
+ */
 export async function setBudgetAction(_prev: ResetState, formData: FormData): Promise<ResetState> {
   await requireAdmin();
-  const value = Number(String(formData.get("monthlyBudget") || "").trim());
+  const month = String(formData.get("month") || "").trim();
+  const value = Number(String(formData.get("amount") || "").trim());
 
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+    return { error: "대상 월을 확인할 수 없습니다." };
+  }
   if (!Number.isFinite(value) || value < 0) {
     return { error: "월 예산을 0 이상의 숫자로 입력해주세요." };
   }
@@ -88,24 +96,23 @@ export async function setBudgetAction(_prev: ResetState, formData: FormData): Pr
     return { error: "금액이 너무 큽니다." };
   }
 
-  const monthlyBudget = Math.round(value);
-  await prisma.setting.upsert({
-    where: { id: "singleton" },
-    update: { monthlyBudget },
-    create: { id: "singleton", monthlyBudget },
+  const amount = Math.round(value);
+  await prisma.monthlyBudget.upsert({
+    where: { month },
+    update: { amount },
+    create: { month, amount },
   });
 
   revalidatePath("/admin");
-  return { done: "월 예산을 저장했습니다." };
+  return { done: `${monthLabel(month)} 예산을 저장했습니다.` };
 }
 
-/**
- * Clears the budget so the panel goes back to asking for one. Zero means unset
- * here — no payroll figures are touched.
- */
-export async function clearBudgetAction() {
+/** Removes just that month's budget; other months keep theirs. */
+export async function clearBudgetAction(formData: FormData) {
   await requireAdmin();
-  await prisma.setting.updateMany({ where: { id: "singleton" }, data: { monthlyBudget: 0 } });
+  const month = String(formData.get("month") || "").trim();
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return;
+  await prisma.monthlyBudget.deleteMany({ where: { month } });
   revalidatePath("/admin");
 }
 

@@ -93,13 +93,13 @@ export default async function AdminPage({
   let summaryRows: SummaryRow[] = [];
   let budget = 0;
   if (tab === "payslip") {
-    const [allSessions, allExpenses, allUnits, setting] = await Promise.all([
+    const [allSessions, allExpenses, allUnits, monthBudget] = await Promise.all([
       prisma.workSession.findMany({ where: { date: { startsWith: month } } }),
       prisma.reimbursement.findMany({ where: { date: { startsWith: month } } }),
       prisma.unitWork.findMany({ where: { date: { startsWith: month } } }),
-      prisma.setting.findUnique({ where: { id: "singleton" } }),
+      prisma.monthlyBudget.findUnique({ where: { month } }),
     ]);
-    budget = setting?.monthlyBudget ?? 0;
+    budget = monthBudget?.amount ?? 0;
     summaryRows = tas.map((t) => {
       const s = allSessions.filter((sess) => sess.userId === t.id);
       const e = allExpenses.filter((exp) => exp.userId === t.id);
@@ -390,13 +390,13 @@ export default async function AdminPage({
           <div className="panel">
             <div className="toolbar">
               <h3 style={{ margin: 0 }}>{monthLabel(month)} 예산 잔액</h3>
-              <BudgetForm currentBudget={budget} />
+              <BudgetForm month={month} monthName={monthLabel(month)} currentBudget={budget} />
             </div>
             {budget > 0 ? (
               <>
                 <div className="summary-grid">
                   <div className="stat-card">
-                    <div className="label">내 월급 (예산)</div>
+                    <div className="label">{monthLabel(month)} 내 월급 (예산)</div>
                     <div className="value">{won(budget)}</div>
                   </div>
                   <div className="stat-card money">
@@ -415,7 +415,7 @@ export default async function AdminPage({
               </>
             ) : (
               <div className="empty-state">
-                내 월급(월 예산)을 설정하면 조교 인건비를 빼고 얼마가 남는지 보여드립니다.
+{monthLabel(month)} 예산을 입력하면 조교 인건비를 빼고 얼마가 남는지 보여드립니다. 예산은 달마다 따로 입력합니다.
               </div>
             )}
           </div>

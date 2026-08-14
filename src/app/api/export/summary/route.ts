@@ -13,12 +13,12 @@ export async function GET(request: NextRequest) {
 
   const month = request.nextUrl.searchParams.get("month") || currentMonthKST();
 
-  const [tas, sessions, reimbursements, units, setting] = await Promise.all([
+  const [tas, sessions, reimbursements, units, monthBudget] = await Promise.all([
     prisma.user.findMany({ where: { role: "TA" }, orderBy: { createdAt: "asc" } }),
     prisma.workSession.findMany({ where: { date: { startsWith: month } } }),
     prisma.reimbursement.findMany({ where: { date: { startsWith: month } } }),
     prisma.unitWork.findMany({ where: { date: { startsWith: month } } }),
-    prisma.setting.findUnique({ where: { id: "singleton" } }),
+    prisma.monthlyBudget.findUnique({ where: { month } }),
   ]);
 
   const perTa = tas.map((ta) => {
@@ -75,13 +75,13 @@ export async function GET(request: NextRequest) {
     ],
   ];
 
-  const budget = setting?.monthlyBudget ?? 0;
+  const budget = monthBudget?.amount ?? 0;
   if (budget > 0) {
     const payrollCost = sum((r) => r.workPay) + sum((r) => r.expenses);
     rows.push(
       [],
       ["예산"],
-      ["내 월급 (예산)", budget],
+      [`${monthLabel(month)} 내 월급 (예산)`, budget],
       ["조교 인건비 + 실비", -payrollCost],
       ["남는 금액", budget - payrollCost],
     );
