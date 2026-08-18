@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { won } from "@/lib/payroll";
+import type { HourlyTask } from "@/components/HourlyTaskPicker";
 
 function formatElapsed(ms: number) {
   const totalSec = Math.max(0, Math.floor(ms / 1000));
@@ -13,11 +15,15 @@ function formatElapsed(ms: number) {
 
 export default function TimerBox({
   clockedInAt,
+  currentTaskLabel,
+  tasks,
   clockInAction,
   clockOutAction,
 }: {
   clockedInAt: string | null;
-  clockInAction: () => Promise<void>;
+  currentTaskLabel: string | null;
+  tasks: HourlyTask[];
+  clockInAction: (formData: FormData) => Promise<void>;
   clockOutAction: () => Promise<void>;
 }) {
   const [elapsed, setElapsed] = useState(0);
@@ -37,7 +43,7 @@ export default function TimerBox({
         <div>
           <div className="status-pill">
             <span className="dot" />
-            근무 중
+            {currentTaskLabel ? `${currentTaskLabel} 근무 중` : "근무 중"}
           </div>
           <div className="elapsed">{formatElapsed(elapsed)}</div>
         </div>
@@ -51,13 +57,23 @@ export default function TimerBox({
   }
 
   return (
-    <div className="timer-box">
+    <form action={clockInAction} className="timer-box">
       <div className="idle-label">현재 근무 중이 아닙니다.</div>
-      <form action={clockInAction}>
+      <div className="field-row" style={{ alignItems: "flex-end" }}>
+        <div className="field grow">
+          <label htmlFor="clock-task">시작할 업무</label>
+          <select id="clock-task" name="taskId" defaultValue={tasks[0]?.id ?? ""} required>
+            {tasks.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label} ({won(t.rate)}/시간)
+              </option>
+            ))}
+          </select>
+        </div>
         <button type="submit" className="btn btn-primary">
           출근하기
         </button>
-      </form>
-    </div>
+      </div>
+    </form>
   );
 }

@@ -6,36 +6,56 @@ import { requireTA } from "@/lib/session";
 import { kstParts, toMinutes } from "@/lib/payroll";
 import { isValidDate, isValidTime } from "@/lib/validation";
 
-export async function clockInAction() {
+export type FormState = { error: string } | undefined;
+
+/**
+ * The rate depends on which task is being worked, so the task is chosen when
+ * clocking in and remembered until clocking out. It is looked up against this
+ * TA's own list, never taken on trust from the form.
+ */
+export async function clockInAction(formData: FormData) {
   const user = await requireTA();
-  if (!user.wage || user.currentClockIn) return;
+  if (user.currentClockIn) return;
+
+  const taskId = String(formData.get("taskId") || "");
+  const task = await prisma.hourlyTask.findFirst({ where: { id: taskId, userId: user.id } });
+  if (!task) return;
+
   await prisma.user.update({
     where: { id: user.id },
-    data: { currentClockIn: new Date() },
+    data: { currentClockIn: new Date(), currentTaskId: task.id },
   });
   revalidatePath("/dashboard");
 }
 
 export async function clockOutAction() {
   const user = await requireTA();
-  if (!user.wage || !user.currentClockIn) return;
+  if (!user.currentClockIn) return;
 
   const start = user.currentClockIn;
   const end = new Date();
   const ms = end.getTime() - start.getTime();
 
-  if (ms > 0) {
+  // The task can have been removed while the clock was running; the rate that
+  // was in force at clock-in is what the entry keeps.
+  const task = user.currentTaskId
+    ? await prisma.hourlyTask.findUnique({ where: { id: user.currentTaskId } })
+    : null;
+
+  if (ms > 0 && task) {
     const hours = Math.round((ms / 3600000) * 100) / 100;
     const sp = kstParts(start);
     const ep = kstParts(end);
     await prisma.workSession.create({
       data: {
         userId: user.id,
+        taskId: task.id,
+        label: task.label,
         date: sp.date,
         startTime: sp.time,
         endTime: ep.time,
         hours,
-        wage: user.wage,
+        wage: task.rate,
         note: "출퇴근 기록",
       },
     });
@@ -43,17 +63,19 @@ export async function clockOutAction() {
 
   await prisma.user.update({
     where: { id: user.id },
-    data: { currentClockIn: null },
+    data: { currentClockIn: null, currentTaskId: null },
   });
   revalidatePath("/dashboard");
 }
 
-export type FormState = { error: string } | undefined;
-
 export async function addSessionAction(_prev: FormState, formData: FormData): Promise<FormState> {
   const user = await requireTA();
-  if (!user.wage) {
-    return { error: "관리자가 시급을 설정해야 근무를 기록할 수 있습니다." };
+
+  const taskId = String(formData.get("taskId") || "");
+  if (!taskId) return { error: "업무를 선택해주세요." };
+  const task = await prisma.hourlyTask.findFirst({ where: { id: taskId, userId: user.id } });
+  if (!task) {
+    return { error: "선택한 업무를 찾을 수 없습니다. 관리자에게 시급 등록을 요청하세요." };
   }
 
   const date = String(formData.get("date") || "");
@@ -76,7 +98,17 @@ export async function addSessionAction(_prev: FormState, formData: FormData): Pr
   const hours = Math.round(((endMin - startMin) / 60) * 100) / 100;
 
   await prisma.workSession.create({
-    data: { userId: user.id, date, startTime: start, endTime: end, hours, wage: user.wage, note },
+    data: {
+      userId: user.id,
+      taskId: task.id,
+      label: task.label,
+      date,
+      startTime: start,
+      endTime: end,
+      hours,
+      wage: task.rate,
+      note,
+    },
   });
 
   revalidatePath("/dashboard");

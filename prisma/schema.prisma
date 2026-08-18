@@ -18,10 +18,10 @@ model User {
   passwordHash  String
   role          Role          @default(TA)
   name          String
-  /// 시급(원). 시간제로 일하지 않는 조교는 비어 있다.
-  wage          Int?
   memo          String?
   currentClockIn DateTime?
+  /// 출근 버튼을 누를 때 고른 시급 업무. 퇴근할 때 그 단가로 기록된다.
+  currentTaskId String?
   createdAt     DateTime      @default(now())
   /// Sessions issued before this moment are refused, so changing a password
   /// (or an admin resetting one) signs out anyone else already logged in.
@@ -30,6 +30,22 @@ model User {
   reimbursements Reimbursement[]
   unitWorks     UnitWork[]
   unitTasks     UnitTask[]
+  hourlyTasks   HourlyTask[]
+}
+
+/// 시간제 업무 한 종류와 그 시급. 같은 조교라도 무슨 일을 하느냐에 따라
+/// 시급이 다르므로 여러 개를 가질 수 있다.
+model HourlyTask {
+  id        String        @id @default(cuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label     String
+  rate      Int
+  createdAt DateTime      @default(now())
+  sessions  WorkSession[]
+
+  @@unique([userId, label])
+  @@index([userId])
 }
 
 /// 개수제 업무 한 종류와 그 단가. 업무마다 단가가 다르므로 조교 한 명이
@@ -88,9 +104,13 @@ model Reimbursement {
 }
 
 model WorkSession {
-  id        String   @id @default(cuid())
+  id        String      @id @default(cuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId    String?
+  task      HourlyTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  /// 기록 시점의 업무명. 업무를 지워도 지난 기록은 그대로 남는다.
+  label     String      @default("근무")
   date      String
   startTime String
   endTime   String

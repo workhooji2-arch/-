@@ -1,9 +1,10 @@
 "use client";
 
 import { useActionState } from "react";
+import HourlyTaskPicker, { type HourlyTask } from "@/components/HourlyTaskPicker";
 import { addSessionAction, type FormState } from "./actions";
 
-export default function ManualEntryForm({ today }: { today: string }) {
+export default function ManualEntryForm({ today, tasks }: { today: string; tasks: HourlyTask[] }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(addSessionAction, undefined);
 
   return (
@@ -14,6 +15,7 @@ export default function ManualEntryForm({ today }: { today: string }) {
           <label htmlFor="date">날짜</label>
           <input id="date" name="date" type="date" defaultValue={today} required />
         </div>
+        <HourlyTaskPicker id="m-task" tasks={tasks} />
         <div className="field">
           <label htmlFor="start">출근 시각</label>
           <input id="start" name="start" type="time" required />

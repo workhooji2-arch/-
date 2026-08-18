@@ -2,14 +2,15 @@
 
 import { useActionState, useState } from "react";
 import { won } from "@/lib/payroll";
-import {
-  addUnitTaskAction,
-  deleteUnitTaskAction,
-  updateUnitTaskAction,
-  type TaskState,
-} from "@/lib/unit-task-actions";
 
 type Task = { id: string; label: string; rate: number };
+export type TaskState = { error: string } | { done: string } | undefined;
+
+type Actions = {
+  add: (prev: TaskState, formData: FormData) => Promise<TaskState>;
+  update: (prev: TaskState, formData: FormData) => Promise<TaskState>;
+  remove: (formData: FormData) => Promise<void>;
+};
 
 function Feedback({ state }: { state: TaskState }) {
   if (!state) return null;
@@ -17,17 +18,23 @@ function Feedback({ state }: { state: TaskState }) {
   return <div className="done-msg">{state.done}</div>;
 }
 
-function RateEditor({ task }: { task: Task }) {
+function RateEditor({ task, actions, unit }: { task: Task; actions: Actions; unit: string }) {
   const [open, setOpen] = useState(false);
   const [state, formAction, pending] = useActionState<TaskState, FormData>(
-    updateUnitTaskAction,
+    actions.update,
     undefined,
   );
+
+  const [handled, setHandled] = useState<TaskState>(undefined);
+  if (state !== handled && state && "done" in state) {
+    setHandled(state);
+    setOpen(false);
+  }
 
   if (!open) {
     return (
       <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(true)}>
-        단가 수정
+        {unit} 수정
       </button>
     );
   }
@@ -36,7 +43,7 @@ function RateEditor({ task }: { task: Task }) {
     <form action={formAction} className="field-row">
       <input type="hidden" name="id" value={task.id} />
       <div className="field">
-        <label>새 단가(원)</label>
+        <label>새 {unit}(원)</label>
         <input type="number" name="rate" min="1" step="1" max="1000000" defaultValue={task.rate} required />
       </div>
       <button type="submit" className="btn btn-primary btn-sm" disabled={pending}>
@@ -50,11 +57,26 @@ function RateEditor({ task }: { task: Task }) {
   );
 }
 
-export default function UnitTaskManager({ userId, tasks }: { userId: string; tasks: Task[] }) {
-  const [state, formAction, pending] = useActionState<TaskState, FormData>(
-    addUnitTaskAction,
-    undefined,
-  );
+export default function TaskManager({
+  userId,
+  tasks,
+  actions,
+  unit,
+  perLabel,
+  placeholder,
+  emptyLabel,
+}: {
+  userId: string;
+  tasks: Task[];
+  actions: Actions;
+  /** What the figure is called: 시급 or 단가. */
+  unit: string;
+  /** How the figure reads in the table: "/ 시간" or "/ 개". */
+  perLabel: string;
+  placeholder: string;
+  emptyLabel: string;
+}) {
+  const [state, formAction, pending] = useActionState<TaskState, FormData>(actions.add, undefined);
 
   return (
     <>
@@ -64,7 +86,7 @@ export default function UnitTaskManager({ userId, tasks }: { userId: string; tas
             <thead>
               <tr>
                 <th>업무</th>
-                <th className="num">단가</th>
+                <th className="num">{unit}</th>
                 <th>관리</th>
               </tr>
             </thead>
@@ -72,14 +94,20 @@ export default function UnitTaskManager({ userId, tasks }: { userId: string; tas
               {tasks.map((t) => (
                 <tr key={t.id}>
                   <td>{t.label}</td>
-                  <td className="num">{won(t.rate)} / 개</td>
+                  <td className="num">
+                    {won(t.rate)} {perLabel}
+                  </td>
                   <td>
                     <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
-                      <RateEditor task={t} />
+                      <RateEditor task={t} actions={actions} unit={unit} />
                       <form
-                        action={deleteUnitTaskAction}
+                        action={actions.remove}
                         onSubmit={(e) => {
-                          if (!confirm(`"${t.label}" 업무를 목록에서 지울까요? 이미 기록된 작업과 금액은 그대로 남습니다.`)) {
+                          if (
+                            !confirm(
+                              `"${t.label}" 업무를 목록에서 지울까요? 이미 기록된 건과 금액은 그대로 남습니다.`,
+                            )
+                          ) {
                             e.preventDefault();
                           }
                         }}
@@ -97,20 +125,18 @@ export default function UnitTaskManager({ userId, tasks }: { userId: string; tas
           </table>
         </div>
       ) : (
-        <div className="empty-state">
-          등록된 업무가 없습니다. 아래에서 업무와 단가를 추가하면 이 조교가 개수 작업을 기록할 수 있습니다.
-        </div>
+        <div className="empty-state">{emptyLabel}</div>
       )}
 
       <form action={formAction} className="field-row" style={{ marginTop: "1rem" }}>
         <input type="hidden" name="userId" value={userId} />
         <div className="field grow">
           <label>업무 이름</label>
-          <input type="text" name="label" placeholder="예: 과제 채점" maxLength={50} required />
+          <input type="text" name="label" placeholder={placeholder} maxLength={50} required />
         </div>
         <div className="field">
-          <label>단가(원/개)</label>
-          <input type="number" name="rate" min="1" step="1" max="1000000" placeholder="1200" required />
+          <label>{unit}(원)</label>
+          <input type="number" name="rate" min="1" step="1" max="1000000" required />
         </div>
         <button type="submit" className="btn btn-primary" disabled={pending}>
           {pending ? "추가 중…" : "업무 추가"}

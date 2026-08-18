@@ -1,24 +1,23 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { setWageAction, type FormState } from "./actions";
+import { setMemoAction, type FormState } from "./actions";
 
-export default function WageForm({
+/** Rates live on the tasks now, so the TA row itself only carries a note. */
+export default function MemoForm({
   userId,
-  currentWage,
   currentMemo,
 }: {
   userId: string;
-  currentWage: number | null;
   currentMemo: string | null;
 }) {
   const [editing, setEditing] = useState(false);
-  const [state, formAction, pending] = useActionState<FormState, FormData>(setWageAction, undefined);
+  const [state, formAction, pending] = useActionState<FormState, FormData>(setMemoAction, undefined);
 
   if (!editing) {
     return (
       <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>
-        {currentWage ? "시급 수정" : "시급 설정"}
+        비고 수정
       </button>
     );
   }
@@ -26,21 +25,9 @@ export default function WageForm({
   return (
     <form action={formAction} className="field-row" style={{ marginTop: "0.5rem" }}>
       <input type="hidden" name="userId" value={userId} />
-      <div className="field">
-        <label>시급(원)</label>
-        <input
-          type="number"
-          name="wage"
-          min="1"
-          step="1"
-          max="1000000"
-          placeholder="비워두면 시간제 아님"
-          defaultValue={currentWage ?? ""}
-        />
-      </div>
       <div className="field grow">
         <label>비고</label>
-        <input type="text" name="memo" defaultValue={currentMemo ?? ""} />
+        <input type="text" name="memo" defaultValue={currentMemo ?? ""} maxLength={200} />
       </div>
       <button type="submit" className="btn btn-primary btn-sm" disabled={pending}>
         {pending ? "저장 중…" : "저장"}

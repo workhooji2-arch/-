@@ -37,7 +37,7 @@ export default async function DashboardPage({
   const nowMonth = currentMonthKST();
   const month = sp.month || nowMonth;
 
-  const [thisMonthSessions, viewSessions, viewExpenses, viewUnits, myTasks] = await Promise.all([
+  const [thisMonthSessions, viewSessions, viewExpenses, viewUnits, myTasks, myHourlyTasks] = await Promise.all([
     month === nowMonth
       ? Promise.resolve(null)
       : prisma.workSession.findMany({ where: { userId: user.id, date: { startsWith: nowMonth } } }),
@@ -54,6 +54,7 @@ export default async function DashboardPage({
       orderBy: [{ date: "asc" }],
     }),
     prisma.unitTask.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" } }),
+    prisma.hourlyTask.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" } }),
   ]);
 
   const headerSessions = thisMonthSessions ?? viewSessions;
@@ -96,13 +97,11 @@ export default async function DashboardPage({
           <div className="value">{won(headerPay)}</div>
         </div>
         <div className="stat-card">
-          <div className="label">{!user.wage && myTasks.length ? "등록된 업무" : "시급"}</div>
+          <div className="label">등록된 업무</div>
           <div className="value">
-            {!user.wage && myTasks.length
-              ? `${myTasks.length}종`
-              : user.wage
-                ? won(user.wage)
-                : "미설정"}
+            {myHourlyTasks.length + myTasks.length
+              ? `${myHourlyTasks.length + myTasks.length}종`
+              : "미설정"}
           </div>
         </div>
       </div>
@@ -116,23 +115,27 @@ export default async function DashboardPage({
         </Link>
       </nav>
 
-      {!user.wage && !myTasks.length ? (
+      {!myHourlyTasks.length && !myTasks.length ? (
         <div className="panel">
           <div className="empty-state">
-            아직 시급이나 개수 업무 단가가 설정되지 않았습니다. 관리자가 설정하면 기록을 시작할 수 있습니다.
+            아직 업무와 단가가 설정되지 않았습니다. 관리자가 설정하면 기록을 시작할 수 있습니다.
           </div>
         </div>
       ) : tab === "log" ? (
         <>
-          {user.wage ? (
+          {myHourlyTasks.length ? (
             <div className="panel">
               <h2>근무 기록</h2>
               <TimerBox
                 clockedInAt={user.currentClockIn ? user.currentClockIn.toISOString() : null}
+                currentTaskLabel={
+                  myHourlyTasks.find((t) => t.id === user.currentTaskId)?.label ?? null
+                }
+                tasks={myHourlyTasks}
                 clockInAction={clockInAction}
                 clockOutAction={clockOutAction}
               />
-              <ManualEntryForm today={todayKST()} />
+              <ManualEntryForm today={todayKST()} tasks={myHourlyTasks} />
             </div>
           ) : null}
           {myTasks.length ? (
@@ -150,11 +153,11 @@ export default async function DashboardPage({
           <div className="panel">
             <div className="toolbar">
               <h3 style={{ margin: 0 }}>
-                {monthLabel(month)} {user.wage ? "근무 내역" : "조회 월"}
+                {monthLabel(month)} {myHourlyTasks.length ? "근무 내역" : "조회 월"}
               </h3>
               <MonthFilter month={month} hidden={{ tab: "log" }} />
             </div>
-            {!user.wage ? (
+            {!myHourlyTasks.length ? (
               <div className="empty-state">
                 시간제 근무는 하지 않는 조교입니다. 위 개수 작업 기록을 사용하세요.
               </div>
@@ -197,7 +200,7 @@ export default async function DashboardPage({
               <div className="name">{user.name}</div>
               <div className="period">
                 {monthLabel(month)} 급여 명세서
-                {user.wage ? ` · 시급 ${won(user.wage)}` : ""}
+                {myHourlyTasks.length ? ` · 시급 업무 ${myHourlyTasks.length}종` : ""}
                 {myTasks.length ? ` · 개수 업무 ${myTasks.length}종` : ""}
               </div>
             </div>
@@ -207,6 +210,7 @@ export default async function DashboardPage({
                   <thead>
                     <tr>
                       <th className="num">날짜</th>
+                      <th>업무</th>
                       <th className="num">근무 시간대</th>
                       <th className="num">시간</th>
                       <th className="num">시급</th>
@@ -217,6 +221,7 @@ export default async function DashboardPage({
                     {viewSessions.map((s) => (
                       <tr key={s.id}>
                         <td className="num">{s.date}</td>
+                        <td>{s.label}</td>
                         <td className="num">
                           {s.startTime}–{s.endTime}
                         </td>
@@ -228,7 +233,7 @@ export default async function DashboardPage({
                   </tbody>
                 </table>
               </div>
-            ) : user.wage ? (
+            ) : myHourlyTasks.length ? (
               <div className="empty-state">{monthLabel(month)}에 기록된 근무가 없습니다.</div>
             ) : null}
             {viewUnits.length ? (

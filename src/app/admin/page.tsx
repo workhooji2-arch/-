@@ -23,11 +23,21 @@ import UnitWorkForm from "@/components/UnitWorkForm";
 import UnitWorkTable from "@/components/UnitWorkTable";
 import WorkSessionTable from "@/components/WorkSessionTable";
 import { logoutAction } from "@/lib/actions";
-import WageForm from "./WageForm";
+import MemoForm from "./WageForm";
 import ResetPasswordForm from "./ResetPasswordForm";
 import AdminSessionForm from "./AdminSessionForm";
 import BudgetForm from "./BudgetPanel";
-import UnitTaskManager from "./UnitTaskManager";
+import TaskManager from "./TaskManager";
+import {
+  addHourlyTaskAction,
+  updateHourlyTaskAction,
+  deleteHourlyTaskAction,
+} from "@/lib/hourly-task-actions";
+import {
+  addUnitTaskAction,
+  updateUnitTaskAction,
+  deleteUnitTaskAction,
+} from "@/lib/unit-task-actions";
 import { deleteTaAction } from "./actions";
 
 export default async function AdminPage({
@@ -40,11 +50,13 @@ export default async function AdminPage({
   const tab = sp.tab === "log" || sp.tab === "payslip" ? sp.tab : "tas";
   const month = sp.month || currentMonthKST();
 
-  const [tas, allTasks] = await Promise.all([
+  const [tas, allTasks, allHourly] = await Promise.all([
     prisma.user.findMany({ where: { role: "TA" }, orderBy: { createdAt: "asc" } }),
     prisma.unitTask.findMany({ orderBy: { createdAt: "asc" } }),
+    prisma.hourlyTask.findMany({ orderBy: { createdAt: "asc" } }),
   ]);
   const tasksFor = (userId: string) => allTasks.filter((t) => t.userId === userId);
+  const hourlyFor = (userId: string) => allHourly.filter((t) => t.userId === userId);
 
   const nowMonth = currentMonthKST();
   const [monthSessionsAll, monthUnitsAll] = await Promise.all([
@@ -172,7 +184,7 @@ export default async function AdminPage({
                   <tr>
                     <th>이름</th>
                     <th>아이디</th>
-                    <th className="num">시급</th>
+                    <th className="num">시급 업무</th>
                     <th className="num">개수 업무</th>
                     <th>비고</th>
                     <th>관리</th>
@@ -183,7 +195,9 @@ export default async function AdminPage({
                     <tr key={t.id}>
                       <td>{t.name}</td>
                       <td>{t.username}</td>
-                      <td className="num">{t.wage ? won(t.wage) + " / 시간" : "—"}</td>
+                      <td className="num">
+                        {hourlyFor(t.id).length ? `${hourlyFor(t.id).length}종` : "—"}
+                      </td>
                       <td className="num">
                         {tasksFor(t.id).length ? `${tasksFor(t.id).length}종` : "—"}
                       </td>
@@ -191,7 +205,7 @@ export default async function AdminPage({
                       <td>
                         <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", alignItems: "flex-start" }}>
                           <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
-                            <WageForm userId={t.id} currentWage={t.wage} currentMemo={t.memo} />
+                            <MemoForm userId={t.id} currentMemo={t.memo} />
                             <ResetPasswordForm userId={t.id} name={t.name} />
                             <DeleteButton
                               action={deleteTaAction}
@@ -215,12 +229,40 @@ export default async function AdminPage({
 
       {tab === "tas" &&
         tas.map((t) => (
-          <div className="panel" key={`tasks-${t.id}`}>
-            <h3>{t.name}님의 개수 업무 단가</h3>
+          <div className="panel" key={`rates-${t.id}`}>
+            <h3>{t.name}님의 업무별 단가</h3>
             <div className="hint">
-              업무마다 단가가 다르면 여러 개를 등록하세요. 조교는 기록할 때 업무를 골라 개수만 입력합니다.
+              같은 조교라도 무슨 일을 하느냐에 따라 금액이 다르면 업무를 여러 개 등록하세요. 조교는 기록할 때
+              업무를 고르기만 하면 됩니다.
             </div>
-            <UnitTaskManager userId={t.id} tasks={tasksFor(t.id)} />
+            <h4 style={{ margin: "1.25rem 0 0.5rem" }}>시간제 (시급)</h4>
+            <TaskManager
+              userId={t.id}
+              tasks={hourlyFor(t.id)}
+              actions={{
+                add: addHourlyTaskAction,
+                update: updateHourlyTaskAction,
+                remove: deleteHourlyTaskAction,
+              }}
+              unit="시급"
+              perLabel="/ 시간"
+              placeholder="예: 고3 인스터디"
+              emptyLabel="등록된 시급 업무가 없습니다. 아래에서 업무와 시급을 추가하면 이 조교가 근무를 기록할 수 있습니다."
+            />
+            <h4 style={{ margin: "2rem 0 0.5rem" }}>개수제 (개당 단가)</h4>
+            <TaskManager
+              userId={t.id}
+              tasks={tasksFor(t.id)}
+              actions={{
+                add: addUnitTaskAction,
+                update: updateUnitTaskAction,
+                remove: deleteUnitTaskAction,
+              }}
+              unit="단가"
+              perLabel="/ 개"
+              placeholder="예: 과제 채점"
+              emptyLabel="등록된 개수 업무가 없습니다."
+            />
           </div>
         ))}
 
@@ -241,13 +283,17 @@ export default async function AdminPage({
                     </Link>
                   ))}
                 </div>
-                {selectedTa && selectedTa.wage ? (
-                  <AdminSessionForm userId={selectedTa.id} today={todayKST()} />
+                {selectedTa && hourlyFor(selectedTa.id).length ? (
+                  <AdminSessionForm
+                    userId={selectedTa.id}
+                    today={todayKST()}
+                    tasks={hourlyFor(selectedTa.id)}
+                  />
                 ) : null}
-                {selectedTa && !selectedTa.wage && !tasksFor(selectedTa.id).length ? (
+                {selectedTa && !hourlyFor(selectedTa.id).length && !tasksFor(selectedTa.id).length ? (
                   <div className="empty-state">
-                    이 조교는 시급도 개수 업무도 설정되지 않아 기록을 남길 수 없습니다. 조교 관리 탭에서
-                    먼저 설정해주세요.
+                    이 조교는 업무와 단가가 설정되지 않아 기록을 남길 수 없습니다. 조교 관리 탭에서 먼저
+                    등록해주세요.
                   </div>
                 ) : null}
               </>
@@ -267,6 +313,7 @@ export default async function AdminPage({
                 rows={viewSessions}
                 totalHours={totalHours}
                 emptyLabel={`${monthLabel(month)}에 기록된 근무가 없습니다.`}
+                tasks={selectedTa ? hourlyFor(selectedTa.id) : []}
                 canEdit
               />
 
@@ -336,7 +383,7 @@ export default async function AdminPage({
                 <div className="payslip-head">
                   <div className="name">{selectedTa.name}</div>
                   <div className="period">
-                    {monthLabel(month)} 급여 명세서 · 시급 {selectedTa.wage ? won(selectedTa.wage) : "미설정"}
+                    {monthLabel(month)} 급여 명세서
                   </div>
                 </div>
                 {viewSessions.length ? (

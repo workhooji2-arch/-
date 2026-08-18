@@ -1,9 +1,18 @@
 "use client";
 
 import { useActionState } from "react";
+import HourlyTaskPicker, { type HourlyTask } from "@/components/HourlyTaskPicker";
 import { addSessionForTaAction, type FormState } from "./actions";
 
-export default function AdminSessionForm({ userId, today }: { userId: string; today: string }) {
+export default function AdminSessionForm({
+  userId,
+  today,
+  tasks,
+}: {
+  userId: string;
+  today: string;
+  tasks: HourlyTask[];
+}) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(addSessionForTaAction, undefined);
 
   return (
@@ -15,6 +24,7 @@ export default function AdminSessionForm({ userId, today }: { userId: string; to
           <label htmlFor="date">날짜</label>
           <input id="date" name="date" type="date" defaultValue={today} required />
         </div>
+        <HourlyTaskPicker id="a-task" tasks={tasks} />
         <div className="field">
           <label htmlFor="start">출근 시각</label>
           <input id="start" name="start" type="time" required />

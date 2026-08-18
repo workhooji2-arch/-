@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/session";
 import { monthLabel, toMinutes } from "@/lib/payroll";
 import { hashPassword } from "@/lib/auth";
-import { MAX_WAGE, amountError, isValidDate, isValidTime, passwordError } from "@/lib/validation";
+import { isValidDate, isValidTime, passwordError } from "@/lib/validation";
 
 export type FormState = { error: string } | undefined;
 export type ResetState = { error: string } | { done: string } | undefined;
@@ -44,14 +44,12 @@ export async function resetTaPasswordAction(
 }
 
 /**
- * Sets the hourly rate. Leaving it blank means this TA is not paid by the hour;
- * piece-rate work is set up separately as tasks, since each task has its own
- * rate.
+ * Rates are per task now, so the only thing left on the TA themselves is the
+ * note the admin keeps about them.
  */
-export async function setWageAction(_prev: FormState, formData: FormData): Promise<FormState> {
+export async function setMemoAction(_prev: FormState, formData: FormData): Promise<FormState> {
   await requireAdmin();
   const userId = String(formData.get("userId") || "");
-  const wageInput = String(formData.get("wage") || "").trim();
   const memo = String(formData.get("memo") || "").trim();
 
   if (!userId) return { error: "대상 조교를 찾을 수 없습니다." };
@@ -59,20 +57,12 @@ export async function setWageAction(_prev: FormState, formData: FormData): Promi
     return { error: "비고는 200자 이내로 입력해주세요." };
   }
 
-  let wage: number | null = null;
-  if (wageInput) {
-    const value = Number(wageInput);
-    const bad = amountError(value, MAX_WAGE, "시급");
-    if (bad) return { error: bad };
-    wage = Math.round(value);
-  }
-
   const target = await prisma.user.findUnique({ where: { id: userId } });
   if (!target || target.role !== "TA") {
     return { error: "대상 조교를 찾을 수 없습니다." };
   }
 
-  await prisma.user.update({ where: { id: userId }, data: { wage, memo } });
+  await prisma.user.update({ where: { id: userId }, data: { memo } });
   revalidatePath("/admin");
   return undefined;
 }
@@ -136,8 +126,11 @@ export async function addSessionForTaAction(_prev: FormState, formData: FormData
   if (!target || target.role !== "TA") {
     return { error: "대상 조교를 찾을 수 없습니다." };
   }
-  if (!target.wage) {
-    return { error: "이 조교는 시급이 설정되지 않았습니다. 먼저 조교 관리에서 시급을 설정하세요." };
+
+  const taskId = String(formData.get("taskId") || "");
+  const task = await prisma.hourlyTask.findFirst({ where: { id: taskId, userId } });
+  if (!task) {
+    return { error: "업무를 선택해주세요. 시급 업무가 없다면 먼저 등록해주세요." };
   }
   if (!isValidDate(date) || !isValidTime(start) || !isValidTime(end)) {
     return { error: "날짜와 시각을 올바르게 입력해주세요." };
@@ -153,7 +146,17 @@ export async function addSessionForTaAction(_prev: FormState, formData: FormData
   const hours = Math.round(((endMin - startMin) / 60) * 100) / 100;
 
   await prisma.workSession.create({
-    data: { userId, date, startTime: start, endTime: end, hours, wage: target.wage, note },
+    data: {
+      userId,
+      taskId: task.id,
+      label: task.label,
+      date,
+      startTime: start,
+      endTime: end,
+      hours,
+      wage: task.rate,
+      note,
+    },
   });
 
   revalidatePath("/admin");

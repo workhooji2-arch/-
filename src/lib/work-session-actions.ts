@@ -45,9 +45,26 @@ export async function updateWorkSessionAction(
 
   const hours = Math.round(((endMin - startMin) / 60) * 100) / 100;
 
+  // Leaving the task alone keeps the rate the entry was filed with; moving it
+  // to another task is a deliberate repricing at that task's current rate.
+  const taskId = String(formData.get("taskId") || "");
+  let label = existing.label;
+  let wage = existing.wage;
+  let nextTaskId = existing.taskId;
+
+  if (taskId && taskId !== existing.taskId) {
+    const task = await prisma.hourlyTask.findFirst({
+      where: { id: taskId, userId: existing.userId },
+    });
+    if (!task) return { error: "선택한 업무를 찾을 수 없습니다." };
+    label = task.label;
+    wage = task.rate;
+    nextTaskId = task.id;
+  }
+
   await prisma.workSession.update({
     where: { id },
-    data: { date, startTime: start, endTime: end, hours, note },
+    data: { date, startTime: start, endTime: end, hours, note, label, wage, taskId: nextTaskId },
   });
 
   revalidatePath("/admin");
