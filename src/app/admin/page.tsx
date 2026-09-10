@@ -13,7 +13,6 @@ import {
   won,
 } from "@/lib/payroll";
 import LogoutButton from "@/components/LogoutButton";
-import MonthFilter from "@/components/MonthFilter";
 import LogFilters from "@/components/LogFilters";
 import DeleteButton from "@/components/DeleteButton";
 import PrintButton from "@/components/PrintButton";
@@ -91,8 +90,8 @@ export default async function AdminPage({
       ])
     : [[], [], []];
 
-  // The filter narrows what the 근무 기록 tab lists; the payslip keeps using
-  // everything, since a payslip has to be the whole month.
+  // The 근무 기록 tab filters its two tables separately, because they are listed
+  // and edited separately.
   const filteredSessions = taskFilter
     ? viewSessions.filter((s) => s.label === taskFilter)
     : viewSessions;
@@ -113,8 +112,21 @@ export default async function AdminPage({
     ]),
   );
 
-  const totalHours = sumHours(viewSessions);
-  const totals = settle(viewSessions, viewExpenses, viewUnits);
+  // The payslip picks one task across both kinds of work, since from here it is
+  // one question — "what did this person earn doing 모고감독?" — and the answer
+  // should not be split across two selects.
+  const payslipTaskOptions = Array.from(new Set([...sessionTaskOptions, ...unitTaskOptions]));
+  const payslipFilter = tab === "payslip" ? taskFilter : "";
+  const slipSessions = payslipFilter
+    ? viewSessions.filter((s) => s.label === payslipFilter)
+    : viewSessions;
+  const slipUnits = payslipFilter ? viewUnits.filter((u) => u.label === payslipFilter) : viewUnits;
+  // Reimbursements belong to no task, so a task-only view leaves them out rather
+  // than billing someone's 비품비 to whichever task happens to be selected.
+  const slipExpenses = payslipFilter ? [] : viewExpenses;
+
+  const totalHours = sumHours(slipSessions);
+  const totals = settle(slipSessions, slipExpenses, slipUnits);
 
   type SummaryRow = {
     id: string;
@@ -406,9 +418,19 @@ export default async function AdminPage({
             <div className="toolbar">
               <h2 style={{ margin: 0 }}>급여 명세서</h2>
               <div className="field-row">
-                <MonthFilter month={month} hidden={{ tab: "payslip", ta: selectedTaId ?? "" }} />
+                <LogFilters
+                  month={month}
+                  task={payslipFilter}
+                  taskOptions={selectedTa ? payslipTaskOptions : []}
+                  hidden={{ tab: "payslip", ta: selectedTaId ?? "" }}
+                />
                 {selectedTa ? (
-                  <a className="btn btn-ghost" href={`/api/export/detail?ta=${selectedTa.id}&month=${month}`}>
+                  <a
+                    className="btn btn-ghost"
+                    href={`/api/export/detail?ta=${selectedTa.id}&month=${month}${
+                      payslipFilter ? `&task=${encodeURIComponent(payslipFilter)}` : ""
+                    }`}
+                  >
                     이 조교 엑셀
                   </a>
                 ) : null}
@@ -429,57 +451,75 @@ export default async function AdminPage({
               </div>
             ) : null}
             {selectedTa ? (
-              <div className="payslip-card" id="payslip-print-area">
-                <div className="payslip-head">
-                  <div className="name">{selectedTa.name}</div>
-                  <div className="period">
-                    {monthLabel(month)} 급여 명세서
+              <>
+                {payslipFilter ? (
+                  <div className="hint" style={{ margin: "0 0 1rem" }}>
+                    「{payslipFilter}」 업무만 골라 본 부분 내역입니다. 월 전체 명세서가 아니며, 실비 정산은
+                    업무와 무관하므로 빠져 있습니다.{" "}
+                    <Link href={`/admin?tab=payslip&ta=${selectedTa.id}&month=${month}`}>
+                      전체 명세서 보기
+                    </Link>
                   </div>
-                </div>
-                {viewSessions.length ? (
-                  <div className="table-wrap">
-                    <table className="ledger">
-                      <thead>
-                        <tr>
-                          <th className="num">날짜</th>
-                          <th className="num">근무 시간대</th>
-                          <th className="num">시간</th>
-                          <th className="num">시급</th>
-                          <th className="num">금액</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {viewSessions.map((s) => (
-                          <tr key={s.id}>
-                            <td className="num">{s.date}</td>
-                            <td className="num">
-                              {s.startTime}–{s.endTime}
-                            </td>
-                            <td className="num">{hrs(s.hours)}</td>
-                            <td className="num">{won(s.wage)}</td>
-                            <td className="num">{won(s.hours * s.wage)}</td>
+                ) : null}
+                <div className="payslip-card" id="payslip-print-area">
+                  <div className="payslip-head">
+                    <div className="name">{selectedTa.name}</div>
+                    <div className="period">
+                      {monthLabel(month)} 급여 명세서
+                      {payslipFilter ? ` · 「${payslipFilter}」 부분 내역` : ""}
+                    </div>
+                  </div>
+                  {slipSessions.length ? (
+                    <div className="table-wrap">
+                      <table className="ledger">
+                        <thead>
+                          <tr>
+                            <th className="num">날짜</th>
+                            <th>업무</th>
+                            <th className="num">근무 시간대</th>
+                            <th className="num">시간</th>
+                            <th className="num">시급</th>
+                            <th className="num">금액</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="empty-state">{monthLabel(month)}에 기록된 근무가 없습니다.</div>
-                )}
-                {viewUnits.length ? (
-                  <div style={{ marginTop: "1.5rem" }}>
-                    <h3>개수 작업</h3>
-                    <UnitWorkTable rows={viewUnits} emptyLabel="" showDelete={false} />
-                  </div>
-                ) : null}
-                {viewExpenses.length ? (
-                  <div style={{ marginTop: "1.5rem" }}>
-                    <h3>실비 정산 (비과세)</h3>
-                    <ReimbursementTable rows={viewExpenses} emptyLabel="" showDelete={false} />
-                  </div>
-                ) : null}
-                <PayslipTotals totalHours={totalHours} {...totals} />
-              </div>
+                        </thead>
+                        <tbody>
+                          {slipSessions.map((s) => (
+                            <tr key={s.id}>
+                              <td className="num">{s.date}</td>
+                              <td>{s.label}</td>
+                              <td className="num">
+                                {s.startTime}–{s.endTime}
+                              </td>
+                              <td className="num">{hrs(s.hours)}</td>
+                              <td className="num">{won(s.wage)}</td>
+                              <td className="num">{won(s.hours * s.wage)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="empty-state">
+                      {payslipFilter
+                        ? `${monthLabel(month)}에 "${payslipFilter}" 시급 근무 기록이 없습니다.`
+                        : `${monthLabel(month)}에 기록된 근무가 없습니다.`}
+                    </div>
+                  )}
+                  {slipUnits.length ? (
+                    <div style={{ marginTop: "1.5rem" }}>
+                      <h3>개수 작업</h3>
+                      <UnitWorkTable rows={slipUnits} emptyLabel="" showDelete={false} />
+                    </div>
+                  ) : null}
+                  {slipExpenses.length ? (
+                    <div style={{ marginTop: "1.5rem" }}>
+                      <h3>실비 정산 (비과세)</h3>
+                      <ReimbursementTable rows={slipExpenses} emptyLabel="" showDelete={false} />
+                    </div>
+                  ) : null}
+                  <PayslipTotals totalHours={totalHours} {...totals} />
+                </div>
+              </>
             ) : (
               <div className="empty-state">아직 가입한 조교가 없습니다.</div>
             )}

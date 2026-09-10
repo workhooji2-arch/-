@@ -12,21 +12,28 @@ export async function GET(request: NextRequest) {
   // A TA can only ever export their own ledger, whatever the query string says.
   const targetId = viewer.role === "ADMIN" ? requested || viewer.id : viewer.id;
   const month = request.nextUrl.searchParams.get("month") || currentMonthKST();
+  // Matches the task filter on the payslip screen, so the download is the same
+  // view the admin was looking at rather than the whole month.
+  const task = (request.nextUrl.searchParams.get("task") || "").trim();
 
   const target = await prisma.user.findUnique({ where: { id: targetId } });
   if (!target) return new Response("대상을 찾을 수 없습니다.", { status: 404 });
 
   const [sessions, reimbursements, units] = await Promise.all([
     prisma.workSession.findMany({
-      where: { userId: targetId, date: { startsWith: month } },
+      where: { userId: targetId, date: { startsWith: month }, ...(task ? { label: task } : {}) },
       orderBy: [{ date: "asc" }, { startTime: "asc" }],
     }),
-    prisma.reimbursement.findMany({
-      where: { userId: targetId, date: { startsWith: month } },
-      orderBy: [{ date: "asc" }],
-    }),
+    // Reimbursements are not filed against a task, so a task-only export leaves
+    // them out instead of attributing them to it.
+    task
+      ? Promise.resolve([])
+      : prisma.reimbursement.findMany({
+          where: { userId: targetId, date: { startsWith: month } },
+          orderBy: [{ date: "asc" }],
+        }),
     prisma.unitWork.findMany({
-      where: { userId: targetId, date: { startsWith: month } },
+      where: { userId: targetId, date: { startsWith: month }, ...(task ? { label: task } : {}) },
       orderBy: [{ date: "asc" }],
     }),
   ]);
@@ -40,7 +47,8 @@ export async function GET(request: NextRequest) {
   const totalQty = units.reduce((a, u) => a + u.quantity, 0);
 
   const rows: (string | number)[][] = [
-    [`${target.name} — ${monthLabel(month)} 급여 내역`],
+    [`${target.name} — ${monthLabel(month)} 급여 내역${task ? ` (「${task}」 업무만)` : ""}`],
+    ...(task ? [[`「${task}」 업무만 골라낸 부분 내역입니다. 실비 정산은 포함되지 않습니다.`]] : []),
     [],
     ["근무 기록"],
     ["날짜", "업무", "출근", "퇴근", "시간", "시급", "금액", "업무 내용"],
@@ -76,5 +84,5 @@ export async function GET(request: NextRequest) {
     ["최종 지급액", total],
   ];
 
-  return csvResponse(`${target.name}_${month}_급여내역.csv`, rows);
+  return csvResponse(`${target.name}_${month}_${task ? `${task}_` : ""}급여내역.csv`, rows);
 }
