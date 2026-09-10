@@ -14,6 +14,7 @@ import {
 } from "@/lib/payroll";
 import LogoutButton from "@/components/LogoutButton";
 import MonthFilter from "@/components/MonthFilter";
+import LogFilters from "@/components/LogFilters";
 import DeleteButton from "@/components/DeleteButton";
 import PrintButton from "@/components/PrintButton";
 import PayslipTotals from "@/components/PayslipTotals";
@@ -43,12 +44,15 @@ import { deleteTaAction } from "./actions";
 export default async function AdminPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; ta?: string; month?: string }>;
+  searchParams: Promise<{ tab?: string; ta?: string; month?: string; task?: string; utask?: string }>;
 }) {
   const admin = await requireAdmin();
   const sp = await searchParams;
   const tab = sp.tab === "log" || sp.tab === "payslip" ? sp.tab : "tas";
   const month = sp.month || currentMonthKST();
+  // Empty means every task; a name means show only that one.
+  const taskFilter = (sp.task || "").trim();
+  const unitFilter = (sp.utask || "").trim();
 
   const [tas, allTasks, allHourly] = await Promise.all([
     prisma.user.findMany({ where: { role: "TA" }, orderBy: { createdAt: "asc" } }),
@@ -86,6 +90,28 @@ export default async function AdminPage({
         }),
       ])
     : [[], [], []];
+
+  // The filter narrows what the 근무 기록 tab lists; the payslip keeps using
+  // everything, since a payslip has to be the whole month.
+  const filteredSessions = taskFilter
+    ? viewSessions.filter((s) => s.label === taskFilter)
+    : viewSessions;
+  const filteredUnits = unitFilter ? viewUnits.filter((u) => u.label === unitFilter) : viewUnits;
+
+  // Offer every task that either exists now or appears in this month's records,
+  // so work recorded under a since-deleted task can still be picked out.
+  const sessionTaskOptions = Array.from(
+    new Set([
+      ...(selectedTa ? hourlyFor(selectedTa.id).map((t) => t.label) : []),
+      ...viewSessions.map((s) => s.label),
+    ]),
+  );
+  const unitTaskOptions = Array.from(
+    new Set([
+      ...(selectedTa ? tasksFor(selectedTa.id).map((t) => t.label) : []),
+      ...viewUnits.map((u) => u.label),
+    ]),
+  );
 
   const totalHours = sumHours(viewSessions);
   const totals = settle(viewSessions, viewExpenses, viewUnits);
@@ -307,12 +333,21 @@ export default async function AdminPage({
                 <h3 style={{ margin: 0 }}>
                   {selectedTa.name}님의 {monthLabel(month)} 근무 내역
                 </h3>
-                <MonthFilter month={month} hidden={{ tab: "log", ta: selectedTa.id }} />
+                <LogFilters
+                  month={month}
+                  task={taskFilter}
+                  taskOptions={sessionTaskOptions}
+                  hidden={{ tab: "log", ta: selectedTa.id, utask: unitFilter }}
+                />
               </div>
               <WorkSessionTable
-                rows={viewSessions}
-                totalHours={totalHours}
-                emptyLabel={`${monthLabel(month)}에 기록된 근무가 없습니다.`}
+                rows={filteredSessions}
+                totalHours={sumHours(filteredSessions)}
+                emptyLabel={
+                  taskFilter
+                    ? `${monthLabel(month)}에 "${taskFilter}" 기록이 없습니다.`
+                    : `${monthLabel(month)}에 기록된 근무가 없습니다.`
+                }
                 tasks={selectedTa ? hourlyFor(selectedTa.id) : []}
                 canEdit
               />
@@ -321,12 +356,27 @@ export default async function AdminPage({
           )}
           {selectedTa && tasksFor(selectedTa.id).length ? (
             <div className="panel">
-              <h3>{selectedTa.name}님의 개수 작업</h3>
+              <div className="toolbar">
+                <h3 style={{ margin: 0 }}>{selectedTa.name}님의 개수 작업</h3>
+                {unitTaskOptions.length > 1 ? (
+                  <LogFilters
+                    month={month}
+                    task={unitFilter}
+                    taskOptions={unitTaskOptions}
+                    taskFieldName="utask"
+                    hidden={{ tab: "log", ta: selectedTa.id, task: taskFilter }}
+                  />
+                ) : null}
+              </div>
               <UnitWorkForm today={todayKST()} tasks={tasksFor(selectedTa.id)} userId={selectedTa.id} />
               <div style={{ marginTop: "1.25rem" }}>
                 <UnitWorkTable
-                  rows={viewUnits}
-                  emptyLabel={`${monthLabel(month)}에 등록된 개수 작업이 없습니다.`}
+                  rows={filteredUnits}
+                  emptyLabel={
+                    unitFilter
+                      ? `${monthLabel(month)}에 "${unitFilter}" 기록이 없습니다.`
+                      : `${monthLabel(month)}에 등록된 개수 작업이 없습니다.`
+                  }
                   tasks={tasksFor(selectedTa.id)}
                   canEdit
                 />

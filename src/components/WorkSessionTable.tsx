@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { hrs } from "@/lib/payroll";
+import { hrs, won } from "@/lib/payroll";
 import {
   deleteWorkSessionAction,
   updateWorkSessionAction,
@@ -109,6 +109,8 @@ export default function WorkSessionTable({
 
   if (!rows.length) return <div className="empty-state">{emptyLabel}</div>;
 
+  const totalPay = rows.reduce((acc, r) => acc + r.hours * r.wage, 0);
+
   return (
     <div className="table-wrap">
       <table className="ledger">
@@ -169,7 +171,7 @@ export default function WorkSessionTable({
           <tr>
             <td colSpan={4}>합계</td>
             <td className="num">{hrs(totalHours)}</td>
-            <td></td>
+            <td className="num">{won(totalPay)}</td>
             <td></td>
             <td></td>
           </tr>
